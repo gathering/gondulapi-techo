@@ -31,7 +31,7 @@ import (
 // Oplog is a single oplog entry. It can be created with POST, or updated
 // with PUT referencing the id.
 type Oplog struct {
-	Id       *int
+	ID       *int
 	Time     *time.Time
 	Systems  *string
 	Username *string
@@ -46,6 +46,7 @@ func init() {
 	receiver.AddHandler("/oplog", func() interface{} { return &Oplogs{} })
 }
 
+// Get gets an Oplog.
 func (o *Oplog) Get(element string) error {
 	return db.Get(o, "oplog", "id", "=", element)
 }
@@ -70,14 +71,16 @@ func intmatcher(element *string, i **int) error {
 	return nil
 }
 
+// Put puts an Oplog.
 func (o Oplog) Put(element string) (gondulapi.Report, error) {
-	err := intmatcher(&element, &o.Id)
+	err := intmatcher(&element, &o.ID)
 	if err != nil {
 		return gondulapi.Report{Failed: 1}, err
 	}
 	return db.Upsert(o, "oplog", "id", "=", element)
 }
 
+// Post posts an Oplog.
 func (o Oplog) Post() (gondulapi.Report, error) {
 	return db.Insert(o, "oplog")
 }

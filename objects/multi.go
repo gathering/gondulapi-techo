@@ -57,6 +57,7 @@ type Test struct {
 // station.
 type StationTests []Test
 
+// Docstub TODO desc
 type Docstub struct {
 	Family    *string
 	Shortname *string
@@ -65,6 +66,7 @@ type Docstub struct {
 	Content   *string
 }
 
+// Docs TODO desc
 type Docs []Docstub
 
 func init() {
@@ -74,6 +76,7 @@ func init() {
 	receiver.AddHandler("/doc/", func() interface{} { return &Docs{} })
 }
 
+// Get gets a ducstub.
 func (ds *Docstub) Get(element string) error {
 	family, shortname := "", ""
 	element = strings.Replace(element, "/", " ", -1)
@@ -84,6 +87,7 @@ func (ds *Docstub) Get(element string) error {
 	return db.Get(ds, "docs", "family", "=", family, "shortname", "=", shortname)
 }
 
+// Put puts a ducstub.
 func (ds Docstub) Put(element string) (gondulapi.Report, error) {
 	family, shortname := "", ""
 	element = strings.Replace(element, "/", " ", -1)
@@ -94,6 +98,7 @@ func (ds Docstub) Put(element string) (gondulapi.Report, error) {
 	return db.Upsert(ds, "docs", "family", "=", family, "shortname", "=", shortname)
 }
 
+// Post posts a ducstub.
 func (ds Docstub) Post() (gondulapi.Report, error) {
 	if ds.Family == nil || *ds.Family == "" || ds.Shortname == nil || *ds.Shortname == "" {
 		return gondulapi.Report{Failed: 1}, gondulapi.Errorf(400, "Need to provide Family and Shortname for doc stubs")
@@ -101,6 +106,7 @@ func (ds Docstub) Post() (gondulapi.Report, error) {
 	return db.Upsert(ds, "docs", "family", "=", ds.Family, "shortname", "=", ds.Shortname)
 }
 
+// Get gets docs.
 func (d *Docs) Get(element string) error {
 	return db.SelectMany(d, "docs", "family", "=", element)
 }

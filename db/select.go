@@ -83,6 +83,7 @@ func Select(d interface{}, table string, searcher ...interface{}) (found bool, e
 	return true, nil
 }
 
+// Selector TODO desc
 type Selector struct {
 	Haystack string
 	Operator string
@@ -296,6 +297,8 @@ func buildSearch(searcher ...interface{}) ([]Selector, error) {
 	}
 	return search, nil
 }
+
+// Get gets stuff.
 func Get(item interface{}, table string, searcher ...interface{}) error {
 	found, err := Select(item, table, searcher...)
 	if err != nil {
