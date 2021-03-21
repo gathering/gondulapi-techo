@@ -1,0 +1,6 @@
+{
+	"listenaddress": ":8080",
+	"connectionstring": "host=db user=gondulapi password=lolkek dbname=gondulapi sslmode=disable",
+	"debug": true,
+	"prefix": "/api"
+}

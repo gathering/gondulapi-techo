@@ -61,6 +61,7 @@ func Connect() error {
 	}
 
 	if gapi.Config.ConnectionString == "" {
+		// TODO
 		log.Warn("Using default connection string for debug purposes. Relax, it's a very secure set of credentials.")
 		gapi.Config.ConnectionString = "user=kly password=lolkek dbname=klytest sslmode=disable"
 	}

@@ -1,5 +1,12 @@
-Gondul API
-==========
+# Gondul API (Tech:Online Edition)
+
+A temporary gondulapi fork for Tech:Online.
+
+Note that it still uses the module name `github.com/gathering/gondulapi` even though this repo is called `gondulapi-techo`.
+
+(Forgive me for _temporarily_ converting the README to Md.)
+
+## Description
 
 This is the API engine that will be used for the Gondul backend in the
 future. At present, this is very much a work in progress and should NOT be
@@ -32,3 +39,17 @@ a POC or research.
 In general, the DB engine uses introspection to figure out how to figure
 out how to retrieve and save an object. The Update mechanism will only
 update fields that are actually provided (if that is possible to detect!).
+
+## Running
+
+### Dev Setup with Docker Compose
+
+1. (First time) Start the DB (detatched): `docker-compose -f dev/docker-compose.yml up -d db`
+1. (First time) Apply schema to DB: `dev/prepare-db.sh`
+1. Build and start everything: `docker-compose -f dev/docker-compose.yml up --build [-d]`
+1. Seed example data: `dev/seed.sh`
+1. Profit.
+
+## Miscellanea
+
+- This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).

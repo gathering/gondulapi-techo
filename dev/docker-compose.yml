@@ -1,0 +1,30 @@
+version: '3.7'
+
+services:
+  gondulapi:
+    image: goldulapi-techo:latest
+    build: ..
+    #user: 1000:1000
+    environment:
+      - TZ=Europe/Oslo
+    volumes:
+      - ./config.json:/app/config.json:ro
+    ports:
+      - 127.0.0.1:8080:8080/tcp
+    depends_on: [db]
+    restart: unless-stopped
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=gondulapi
+      - POSTGRES_PASSWORD=lolkek
+    volumes:
+      #- ./db:/var/lib/postgresql/data:rw
+      - db-data:/var/lib/mysql
+      - ../schema.sql:/tmp/schema.sql:ro
+      #- ./db-init.sh:/docker-entrypoint-initdb.d/init-user-db.sh:ro
+    restart: unless-stopped
+
+volumes:
+  db-data: {}
