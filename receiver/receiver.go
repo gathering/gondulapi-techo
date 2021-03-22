@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/gathering/gondulapi"
 
@@ -37,9 +38,11 @@ var handles map[string]Allocator
 
 type input struct {
 	method string
-	public bool
 	data   []byte
 	url    *url.URL
+	query  map[string][]string
+	pretty bool
+	limit  int
 }
 
 type output struct {
@@ -55,29 +58,32 @@ type receiver struct {
 
 // answer replies to a HTTP request with the provided output, optionally
 // formatting the output prettily. It also calculates an ETag.
-func (rcvr receiver) answer(w http.ResponseWriter, output output, pretty bool) {
-	var b []byte
-	var err error
-	if pretty {
-		b, err = json.MarshalIndent(output.data, "", "  ")
-	} else {
-		b, err = json.Marshal(output.data)
-	}
+func (rcvr receiver) answer(w http.ResponseWriter, input input, output output) {
 	code := output.code
-	if err != nil {
-		log.Printf("Json marshal error: %v", err)
+
+	var b []byte
+	var jsonErr error
+	if input.pretty {
+		b, jsonErr = json.MarshalIndent(output.data, "", "  ")
+	} else {
+		b, jsonErr = json.Marshal(output.data)
+	}
+	if jsonErr != nil {
+		log.Printf("Json marshal error: %v", jsonErr)
 		b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
 		code = 500
 	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
 	etagraw := sha256.Sum256(b)
 	etagstr := hex.EncodeToString(etagraw[:])
 	w.Header().Set("ETag", etagstr)
-	w.WriteHeader(code)
-	if code == 204 {
-		return
-	}
 
-	fmt.Fprintf(w, "%s\n", b)
+	w.WriteHeader(code)
+	if code != 204 {
+		fmt.Fprintf(w, "%s\n", b)
+	}
 }
 
 // get is a badly named function in the context of HTTP since what it
@@ -86,6 +92,7 @@ func (rcvr receiver) answer(w http.ResponseWriter, output output, pretty bool) {
 func (rcvr receiver) get(w http.ResponseWriter, r *http.Request) (input, error) {
 	var input input
 	input.url = r.URL
+	input.query = r.URL.Query()
 	input.method = r.Method
 	log.WithFields(log.Fields{
 		"url":     r.URL,
@@ -106,6 +113,14 @@ func (rcvr receiver) get(w http.ResponseWriter, r *http.Request) (input, error) 
 		}
 	}
 
+	input.pretty = len(r.URL.Query()["pretty"]) > 0
+
+	if limitArgs := r.URL.Query()["limit"]; len(limitArgs) > 0 {
+		if i, err := strconv.Atoi(limitArgs[0]); err == nil {
+			input.limit = i
+		}
+	}
+
 	return input, nil
 }
 
@@ -123,8 +138,9 @@ func message(str string, v ...interface{}) (m struct {
 // PUT and POST it also parses the input data.
 func handle(item interface{}, input input, path string) (output output) {
 	output.code = 200
-	var report gondulapi.Report
+	var report gondulapi.WriteReport
 	var err error
+
 	defer func() {
 		log.WithFields(log.Fields{
 			"output.code": output.code,
@@ -135,6 +151,7 @@ func handle(item interface{}, input input, path string) (output output) {
 		if err != nil && report.Error == nil {
 			report.Error = err
 		}
+
 		if report.Code != 0 {
 			output.code = report.Code
 		} else if havegerr {
@@ -142,56 +159,73 @@ func handle(item interface{}, input input, path string) (output output) {
 			output.code = gerr.Code
 		} else if report.Error != nil {
 			output.code = 500
-		} else {
-			output.code = 200
 		}
+
 		if output.data == nil && output.code != 204 {
 			output.data = report
 		}
 	}()
-	if input.method == "GET" {
+
+	request := gondulapi.Request{
+		Element: input.url.Path[len(path):],
+		Args:    input.query,
+		Limit:   input.limit,
+	}
+
+	switch input.method {
+	case "GET":
 		get, ok := item.(gondulapi.Getter)
 		if !ok {
-			output.data = message("%s on %s failed: No such method for this path", input.method, path)
+			output.code = 405
+			output.data = message("method not allowed")
 			return
 		}
-		err = get.Get(input.url.Path[len(path):])
+		err = get.Get(&request)
 		if err != nil {
 			return
 		}
 		output.data = get
-	} else if input.method == "PUT" {
-		err = json.Unmarshal(input.data, &item)
-		if err != nil {
+	case "PUT":
+		if err := json.Unmarshal(input.data, &item); err != nil {
+			output.code = 400
+			output.data = message("malformed data")
 			return
 		}
 		put, ok := item.(gondulapi.Putter)
 		if !ok {
-			output.data = message("%s on %s failed: No such method for this path", input.method, path)
+			output.code = 405
+			output.data = message("method not allowed")
 			return
 		}
-		report, err = put.Put(input.url.Path[len(path):])
+		report, err = put.Put(&request)
 		output.data = report
-	} else if input.method == "DELETE" {
+	case "DELETE":
 		del, ok := item.(gondulapi.Deleter)
 		if !ok {
-			output.data = message("%s on %s failed: No such method for this path", input.method, path)
+			output.code = 405
+			output.data = message("method not allowed")
 			return
 		}
-		report, err = del.Delete(input.url.Path[len(path):])
+		report, err = del.Delete(&request)
 		output.data = report
-	} else if input.method == "POST" {
-		err = json.Unmarshal(input.data, &item)
-		if err != nil {
+	case "POST":
+		if err := json.Unmarshal(input.data, &item); err != nil {
+			output.code = 400
+			output.data = message("malformed data")
 			return
 		}
 		post, ok := item.(gondulapi.Poster)
 		if !ok {
-			output.data = message("%s on %s failed: No such method for this path", input.method, path)
+			output.code = 405
+			output.data = message("method not allowed")
 			return
 		}
-		report, err = post.Post()
+		report, err = post.Post(&request)
 		output.data = report
+	default:
+		output.code = 405
+		output.data = message("method not allowed")
+		return
 	}
 	return
 }
@@ -206,8 +240,7 @@ func (rcvr receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"data": string(input.data),
 		"err":  err,
 	}).Trace("Got")
-	pretty := len(input.url.Query()["pretty"]) > 0
 	item := rcvr.alloc()
 	output := handle(item, input, rcvr.path)
-	rcvr.answer(w, output, pretty)
+	rcvr.answer(w, input, output)
 }

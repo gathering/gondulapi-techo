@@ -113,8 +113,8 @@ func enumerate(haystacks map[string]bool, populate bool, d interface{}) (keyvals
 // Update attempts to update the object in the database, using the provided
 // string and matching the haystack with the needle. It skips fields that
 // are nil-pointers.
-func Update(d interface{}, table string, searcher ...interface{}) (gondulapi.Report, error) {
-	report := gondulapi.Report{}
+func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.WriteReport, error) {
+	report := gondulapi.WriteReport{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++
@@ -161,8 +161,8 @@ func Update(d interface{}, table string, searcher ...interface{}) (gondulapi.Rep
 // if an object already exists, so it will happily make duplicates -
 // your database schema should prevent that, and calling code should
 // check if that is not the desired behavior.
-func Insert(d interface{}, table string) (gondulapi.Report, error) {
-	report := gondulapi.Report{}
+func Insert(table string, d interface{}) (gondulapi.WriteReport, error) {
+	report := gondulapi.WriteReport{}
 	haystacks := make(map[string]bool, 0)
 	kvs, err := enumerate(haystacks, false, d)
 	if err != nil {
@@ -203,20 +203,20 @@ func Insert(d interface{}, table string) (gondulapi.Report, error) {
 // still attempt an UPDATE, which will fail silently (for now). This can be
 // handled by a front-end doing a double-check, or by just assuming it
 // doesn't happen often enough to be worth fixing.
-func Upsert(d interface{}, table string, searcher ...interface{}) (gondulapi.Report, error) {
+func Upsert(table string, d interface{}, searcher ...interface{}) (gondulapi.WriteReport, error) {
 	found, err := Exists(table, searcher...)
 	if err != nil {
-		return gondulapi.Report{Failed: 1}, gondulapi.InternalError
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.InternalError
 	}
 	if found {
-		return Update(d, table, searcher...)
+		return Update(table, d, searcher...)
 	}
-	return Insert(d, table)
+	return Insert(table, d)
 }
 
 // Delete will delete the element, and will also delete duplicates.
-func Delete(table string, searcher ...interface{}) (gondulapi.Report, error) {
-	report := gondulapi.Report{}
+func Delete(table string, searcher ...interface{}) (gondulapi.WriteReport, error) {
+	report := gondulapi.WriteReport{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++

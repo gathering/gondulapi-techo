@@ -12,8 +12,8 @@ RUN go mod download
 COPY cmd cmd
 COPY db db
 COPY helper helper
-COPY objects objects
 COPY receiver receiver
+COPY techo techo
 COPY types types
 COPY *.go ./
 RUN go build -v -o gondulapi cmd/test/main.go

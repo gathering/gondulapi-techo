@@ -22,8 +22,8 @@ package main
 import (
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
-	_ "github.com/gathering/gondulapi/objects"
 	"github.com/gathering/gondulapi/receiver"
+	_ "github.com/gathering/gondulapi/techo"
 )
 
 func main() {

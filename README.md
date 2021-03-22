@@ -40,9 +40,9 @@ In general, the DB engine uses introspection to figure out how to figure
 out how to retrieve and save an object. The Update mechanism will only
 update fields that are actually provided (if that is possible to detect!).
 
-## Running
+## Development
 
-### Dev Setup with Docker Compose
+### Setup with Docker Compose
 
 1. (First time) Start the DB (detatched): `docker-compose -f dev/docker-compose.yml up -d db`
 1. (First time) Apply schema to DB: `dev/prepare-db.sh`
@@ -50,6 +50,20 @@ update fields that are actually provided (if that is possible to detect!).
 1. Seed example data: `dev/seed.sh`
 1. Profit.
 
+### Notes
+
+- Check linting errors: `golint ./...`
+
 ## Miscellanea
 
 - This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
+
+## Changes
+
+- Merge the slightly outdated Tech:Online version into the slightly updated mainline Gondul API version.
+- The allocators (?) unrelated to Tech:O were removed as I can't be bothered updating them.
+- Allocators based on Tech:O 2020 were added.
+- The query args are forwarded to allocators (e.g. to facilitate limiting and filtering).
+- Added limit input for limiting the number of returned objects.
+- Fixed content type.
+- Fixed method-not-supported status code.

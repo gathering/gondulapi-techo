@@ -49,9 +49,17 @@ package gondulapi
 
 import "fmt"
 
-// Report is an update report on write-requests. The precise meaning might
+// Request contains the last part of the URL (without the handler prefix), certain query args,
+// and a limit on how many elements to get.
+type Request struct {
+	Element string
+	Args    map[string][]string
+	Limit   int
+}
+
+// WriteReport is an update report on write-requests. The precise meaning might
 // vary, but the gist should be the same.
-type Report struct {
+type WriteReport struct {
 	Affected int
 	Ok       int
 	Failed   int
@@ -62,27 +70,28 @@ type Report struct {
 // Getter implements Get method, which should fetch the object represented
 // by the element path.
 type Getter interface {
-	Get(element string) error
+	Get(request *Request) error
 }
 
 // Putter is an idempotent method that requires an absolute path. It should
 // (over-)write the object found at the element path.
 type Putter interface {
-	Put(element string) (Report, error)
+	Put(request *Request) (WriteReport, error)
 }
 
 // Poster is not necessarily idempotent, but can be. It should write the
 // object provided, potentially generating a new ID for it if one isn't
 // provided in the data structure itself.
+// Post should ignore the request element.
 type Poster interface {
-	Post() (Report, error)
+	Post(request *Request) (WriteReport, error)
 }
 
 // Deleter should delete the object identified by the element. It should be
 // idempotent, in that it should be safe to call it on already-deleted
 // items.
 type Deleter interface {
-	Delete(element string) (Report, error)
+	Delete(request *Request) (WriteReport, error)
 }
 
 // Errorf is a convenience-function to provide an Error data structure,
