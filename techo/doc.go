@@ -51,31 +51,27 @@ type Document struct {
 type Documents []*Document
 
 func init() {
-	receiver.AddHandler("/document-families/", func() interface{} { return &DocumentFamilies{} })
-	receiver.AddHandler("/document-family/", func() interface{} { return &DocumentFamily{} })
-	receiver.AddHandler("/documents/", func() interface{} { return &Documents{} })
-	receiver.AddHandler("/document/", func() interface{} { return &Document{} })
+	receiver.AddHandler("/document-families/", "", func() interface{} { return &DocumentFamilies{} })
+	receiver.AddHandler("/document-family/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &DocumentFamily{} })
+	receiver.AddHandler("/documents/", "", func() interface{} { return &Documents{} })
+	receiver.AddHandler("/document/", "^(?:(?P<family_id>[^/]+)/(?P<local_id>[^/]+)/)?$", func() interface{} { return &Document{} })
 }
 
 // Get gets multiple families.
 func (families *DocumentFamilies) Get(request *gondulapi.Request) error {
-	if request.Element != "" {
-		return gondulapi.Errorf(400, "element not allowed")
-	}
-
 	var queryBuilder strings.Builder
 	nextQueryArgID := 1
 	var queryArgs []interface{}
 	queryBuilder.WriteString("SELECT id,name FROM document_families")
-	if request.Limit > 0 {
+	if request.ListLimit > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, request.Limit)
+		queryArgs = append(queryArgs, request.ListLimit)
 	}
 
 	rows, err := db.DB.Query(queryBuilder.String(), queryArgs...)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
@@ -85,7 +81,7 @@ func (families *DocumentFamilies) Get(request *gondulapi.Request) error {
 		var family DocumentFamily
 		err = rows.Scan(&family.ID, &family.Name)
 		if err != nil {
-			return gondulapi.Errorf(500, "failed to scan entity from the database")
+			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
 		}
 		*families = append(*families, &family)
 	}
@@ -95,25 +91,26 @@ func (families *DocumentFamilies) Get(request *gondulapi.Request) error {
 
 // Get gets a single family.
 func (family *DocumentFamily) Get(request *gondulapi.Request) error {
-	if request.Element == "" {
-		return gondulapi.Errorf(400, "ID required")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	rows, err := db.DB.Query("SELECT id,name FROM document_families WHERE id = $1", request.Element)
+	rows, err := db.DB.Query("SELECT id,name FROM document_families WHERE id = $1", id)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
 	}()
 
 	if !rows.Next() {
-		return gondulapi.Errorf(404, "not found")
+		return gondulapi.Error{Code: 404, Message: "not found"}
 	}
 
 	err = rows.Scan(&family.ID, &family.Name)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to parse data from database")
+		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
 
 	return nil
@@ -124,34 +121,41 @@ func (family *DocumentFamily) Post(request *gondulapi.Request) (gondulapi.WriteR
 	if exists, err := family.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(409, "duplicate ID")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
 	return family.create()
 }
 
 // Put creates or updates a family.
 func (family *DocumentFamily) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
-	if *family.ID != request.Element {
+
+	if *family.ID != id {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
 	}
+
 	return family.createOrUpdate()
 }
 
 // Delete deletes a family.
 func (family *DocumentFamily) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
+
+	family.ID = &id
 	exists, err := family.exists()
 	if err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
 	if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(404, "not found")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
 	}
+
 	return db.Delete("document_families", "id", family.ID)
 }
 
@@ -189,33 +193,28 @@ func (family *DocumentFamily) exists() (bool, error) {
 
 // Get gets multiple documents.
 func (documents *Documents) Get(request *gondulapi.Request) error {
-	if request.Element != "" {
-		return gondulapi.Errorf(400, "element not allowed")
-	}
-
 	var queryBuilder strings.Builder
 	nextQueryArgID := 1
 	var queryArgs []interface{}
-	_, brief := request.Args["brief"]
-	if brief {
+	if request.ListBrief {
 		queryBuilder.WriteString("SELECT family_id,local_id,name,sequence FROM documents")
 	} else {
 		queryBuilder.WriteString("SELECT family_id,local_id,name,sequence,content,content_format FROM documents")
 	}
-	if familyID, ok := request.Args["family_id"]; ok && len(familyID) > 0 && len(familyID[0]) > 0 {
+	if familyID, ok := request.ExtraArgs["family_id"]; ok && len(familyID) > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" WHERE family_id = $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, familyID[0])
+		queryArgs = append(queryArgs, familyID)
 	}
-	if request.Limit > 0 {
+	if request.ListLimit > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, request.Limit)
+		queryArgs = append(queryArgs, request.ListLimit)
 	}
 
 	rows, err := db.DB.Query(queryBuilder.String(), queryArgs...)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
@@ -223,13 +222,13 @@ func (documents *Documents) Get(request *gondulapi.Request) error {
 
 	for rows.Next() {
 		var document Document
-		if brief {
+		if request.ListBrief {
 			err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence)
 		} else {
 			err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
 		}
 		if err != nil {
-			return gondulapi.Errorf(500, "failed to scan entity from the database")
+			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
 		}
 		*documents = append(*documents, &document)
 	}
@@ -239,33 +238,27 @@ func (documents *Documents) Get(request *gondulapi.Request) error {
 
 // Get gets a single document.
 func (document *Document) Get(request *gondulapi.Request) error {
-	if request.Element == "" {
-		return gondulapi.Errorf(400, "family and local IDs required")
-	}
-	var familyID string
-	var localID string
-	spaceElement := strings.Replace(request.Element, "/", " ", -1)
-	if _, err := fmt.Sscanf(spaceElement, "%s %s", &familyID, &localID); err != nil {
-		return gondulapi.Errorf(400, "family and local IDs required")
-	} else if familyID == "" || localID == "" {
-		return gondulapi.Errorf(400, "family and local IDs required")
+	familyID, familyIDExists := request.Args["family_id"]
+	localID, localIDExists := request.Args["local_id"]
+	if !familyIDExists || !localIDExists {
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
 	rows, err := db.DB.Query("SELECT family_id,local_id,name,sequence,content,content_format FROM documents WHERE family_id = $1 AND local_id = $2", familyID, localID)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
 	}()
 
 	if !rows.Next() {
-		return gondulapi.Errorf(404, "not found")
+		return gondulapi.Error{Code: 404, Message: "not found"}
 	}
 
 	err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to parse data from database")
+		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
 
 	return nil
@@ -274,20 +267,20 @@ func (document *Document) Get(request *gondulapi.Request) error {
 // Post creates a new document.
 func (document *Document) Post(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 	if document.FamilyID == nil || *document.FamilyID == "" || document.LocalID == nil || *document.LocalID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family and local IDs required"}
 	}
 
 	if exists, err := document.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(409, "duplicate ID")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
 
 	family := DocumentFamily{ID: document.FamilyID}
 	if exists, err := family.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family does not exist")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family does not exist"}
 	}
 
 	return document.create()
@@ -295,20 +288,14 @@ func (document *Document) Post(request *gondulapi.Request) (gondulapi.WriteRepor
 
 // Put creates or updates a document.
 func (document *Document) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
-	}
-	var familyID string
-	var localID string
-	spaceElement := strings.Replace(request.Element, "/", " ", -1)
-	if _, err := fmt.Sscanf(spaceElement, "%s %s", &familyID, &localID); err != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
-	} else if familyID == "" || localID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
+	familyID, familyIDExists := request.Args["family_id"]
+	localID, localIDExists := request.Args["local_id"]
+	if !familyIDExists || !localIDExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
 	if document.FamilyID == nil || *document.FamilyID == "" || document.LocalID == nil || *document.LocalID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family and local IDs required"}
 	}
 	if *document.FamilyID != familyID || *document.LocalID != localID {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
@@ -318,7 +305,7 @@ func (document *Document) Put(request *gondulapi.Request) (gondulapi.WriteReport
 	if exists, err := family.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family does not exist")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family does not exist"}
 	}
 
 	return document.createOrUpdate()
@@ -326,16 +313,10 @@ func (document *Document) Put(request *gondulapi.Request) (gondulapi.WriteReport
 
 // Delete deletes a document.
 func (document *Document) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
-	}
-	var familyID string
-	var localID string
-	spaceElement := strings.Replace(request.Element, "/", " ", -1)
-	if _, err := fmt.Sscanf(spaceElement, "%s %s", &familyID, &localID); err != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
-	} else if familyID == "" || localID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "family and local IDs required")
+	familyID, familyIDExists := request.Args["family_id"]
+	localID, localIDExists := request.Args["local_id"]
+	if !familyIDExists || !localIDExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
 	document.FamilyID = &familyID
@@ -345,7 +326,7 @@ func (document *Document) Delete(request *gondulapi.Request) (gondulapi.WriteRep
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
 	if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(404, "not found")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
 	}
 	return db.Delete("documents", "family_id", "=", document.FamilyID, "local_id", "=", document.LocalID)
 }

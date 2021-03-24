@@ -27,22 +27,36 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/gathering/gondulapi"
 
 	log "github.com/sirupsen/logrus"
 )
 
-var handles map[string]Allocator
+type receiver struct {
+	pathPattern regexp.Regexp
+	allocator   Allocator
+}
+
+type receiverSet struct {
+	pathPrefix string
+	receivers  []receiver
+}
+
+// Map of all receiver sets
+var receiverSets map[string]*receiverSet
 
 type input struct {
-	method string
-	data   []byte
-	url    *url.URL
-	query  map[string][]string
-	pretty bool
-	limit  int
+	url        *url.URL
+	pathPrefix string
+	pathSuffix string
+	method     string
+	data       []byte
+	query      map[string][]string
+	pretty     bool
 }
 
 type output struct {
@@ -51,61 +65,56 @@ type output struct {
 	cachecontrol string
 }
 
-type receiver struct {
-	alloc Allocator
-	path  string
-}
+func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	log.WithFields(log.Fields{
+		"url":    request.URL,
+		"method": request.Method,
+		"client": request.RemoteAddr,
+	}).Infof("Request")
 
-// answer replies to a HTTP request with the provided output, optionally
-// formatting the output prettily. It also calculates an ETag.
-func (rcvr receiver) answer(w http.ResponseWriter, input input, output output) {
-	code := output.code
-
-	var b []byte
-	var jsonErr error
-	if input.pretty {
-		b, jsonErr = json.MarshalIndent(output.data, "", "  ")
-	} else {
-		b, jsonErr = json.Marshal(output.data)
-	}
-	if jsonErr != nil {
-		log.Printf("Json marshal error: %v", jsonErr)
-		b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
-		code = 500
+	input, err := getInput(set.pathPrefix, request)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"data": string(input.data),
+			"err":  err,
+		}).Warn("Request input failed")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-
-	etagraw := sha256.Sum256(b)
-	etagstr := hex.EncodeToString(etagraw[:])
-	w.Header().Set("ETag", etagstr)
-
-	w.WriteHeader(code)
-	if code != 204 {
-		fmt.Fprintf(w, "%s\n", b)
+	var foundReceiver *receiver
+	for _, receiver := range set.receivers {
+		if receiver.pathPattern.MatchString(input.pathSuffix) {
+			foundReceiver = &receiver
+			break
+		}
 	}
+
+	output := handleRequest(foundReceiver, input)
+	answerRequest(writer, input, output)
 }
 
 // get is a badly named function in the context of HTTP since what it
 // really does is just read the body of a HTTP request. In my defence, it
 // used to do more. But what have it done for me lately?!
-func (rcvr receiver) get(w http.ResponseWriter, r *http.Request) (input, error) {
+func getInput(pathPrefix string, request *http.Request) (input, error) {
 	var input input
-	input.url = r.URL
-	input.query = r.URL.Query()
-	input.method = r.Method
-	log.WithFields(log.Fields{
-		"url":     r.URL,
-		"method":  r.Method,
-		"address": r.RemoteAddr,
-	}).Infof("Request")
+	fullPath := request.URL.Path
+	// Make sure path always ends with "/"
+	if !strings.HasSuffix(fullPath, "/") {
+		fullPath += "/"
+	}
+	input.url = request.URL
+	input.pathPrefix = pathPrefix
+	input.pathSuffix = fullPath[len(gondulapi.Config.Prefix+pathPrefix):]
+	input.query = request.URL.Query()
+	input.method = request.Method
 
-	if r.ContentLength != 0 {
-		input.data = make([]byte, r.ContentLength)
+	if request.ContentLength != 0 {
+		input.data = make([]byte, request.ContentLength)
 
-		if n, err := io.ReadFull(r.Body, input.data); err != nil {
+		if n, err := io.ReadFull(request.Body, input.data); err != nil {
 			log.WithFields(log.Fields{
-				"address":  r.RemoteAddr,
+				"address":  request.RemoteAddr,
 				"error":    err,
 				"numbytes": n,
 			}).Error("Read error from client")
@@ -113,30 +122,15 @@ func (rcvr receiver) get(w http.ResponseWriter, r *http.Request) (input, error) 
 		}
 	}
 
-	input.pretty = len(r.URL.Query()["pretty"]) > 0
-
-	if limitArgs := r.URL.Query()["limit"]; len(limitArgs) > 0 {
-		if i, err := strconv.Atoi(limitArgs[0]); err == nil {
-			input.limit = i
-		}
-	}
+	input.pretty = len(request.URL.Query()["pretty"]) > 0
 
 	return input, nil
-}
-
-// message is a convenience function
-func message(str string, v ...interface{}) (m struct {
-	Message string
-	Error   string `json:",omitempty"`
-}) {
-	m.Message = fmt.Sprintf(str, v...)
-	return
 }
 
 // handle figures out what Method the input has, casts item to the correct
 // interface and calls the relevant function, if any, for that data. For
 // PUT and POST it also parses the input data.
-func handle(item interface{}, input input, path string) (output output) {
+func handleRequest(receiver *receiver, input input) (output output) {
 	output.code = 200
 	var report gondulapi.WriteReport
 	var err error
@@ -166,12 +160,42 @@ func handle(item interface{}, input input, path string) (output output) {
 		}
 	}()
 
-	request := gondulapi.Request{
-		Element: input.url.Path[len(path):],
-		Args:    input.query,
-		Limit:   input.limit,
+	if receiver == nil {
+		output.code = 404
+		output.data = message("not found")
+		return
 	}
 
+	var request gondulapi.Request
+	request.Args = make(map[string]string)
+	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
+	argCaptureNames := receiver.pathPattern.SubexpNames()
+	for i := range argCaptures {
+		if i > 0 {
+			if argCaptureNames[i] != "" {
+				request.Args[argCaptureNames[i]] = argCaptures[i]
+			}
+		}
+	}
+	request.ExtraArgs = make(map[string]string)
+	for key, value := range input.query {
+		// Only use first arg for each key
+		if len(value) > 0 {
+			request.ExtraArgs[key] = value[0]
+		} else {
+			request.ExtraArgs[key] = ""
+		}
+	}
+	if value, exists := request.ExtraArgs["limit"]; exists {
+		if i, err := strconv.Atoi(value); err == nil {
+			request.ListLimit = i
+		}
+	}
+	if _, exists := request.ExtraArgs["brief"]; exists {
+		request.ListBrief = true
+	}
+
+	item := receiver.allocator()
 	switch input.method {
 	case "GET":
 		get, ok := item.(gondulapi.Getter)
@@ -230,17 +254,41 @@ func handle(item interface{}, input input, path string) (output output) {
 	return
 }
 
-// ServeHTTP implements the net/http ServeHTTP handler. It does this by
-// first reading input data, then allocating a data structure specified on
-// the receiver originally through AddHandler, then parses input data onto
-// that data and replies. All input/output is valid JSON.
-func (rcvr receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	input, err := rcvr.get(w, r)
-	log.WithFields(log.Fields{
-		"data": string(input.data),
-		"err":  err,
-	}).Trace("Got")
-	item := rcvr.alloc()
-	output := handle(item, input, rcvr.path)
-	rcvr.answer(w, input, output)
+// message is a convenience function
+func message(str string, v ...interface{}) (m struct {
+	Message string `json:"message"`
+	Error   string `json:"error,omitempty"`
+}) {
+	m.Message = fmt.Sprintf(str, v...)
+	return
+}
+
+// answer replies to a HTTP request with the provided output, optionally
+// formatting the output prettily. It also calculates an ETag.
+func answerRequest(w http.ResponseWriter, input input, output output) {
+	code := output.code
+
+	var b []byte
+	var jsonErr error
+	if input.pretty {
+		b, jsonErr = json.MarshalIndent(output.data, "", "  ")
+	} else {
+		b, jsonErr = json.Marshal(output.data)
+	}
+	if jsonErr != nil {
+		log.Printf("Json marshal error: %v", jsonErr)
+		b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
+		code = 500
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	etagraw := sha256.Sum256(b)
+	etagstr := hex.EncodeToString(etagraw[:])
+	w.Header().Set("ETag", etagstr)
+
+	w.WriteHeader(code)
+	if code != 204 {
+		fmt.Fprintf(w, "%s\n", b)
+	}
 }

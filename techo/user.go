@@ -44,39 +44,34 @@ type User struct {
 type Users []*User
 
 func init() {
-	receiver.AddHandler("/users/", func() interface{} { return &Users{} })
-	receiver.AddHandler("/user/", func() interface{} { return &User{} })
+	receiver.AddHandler("/users/", "", func() interface{} { return &Users{} })
+	receiver.AddHandler("/user/", "^(?:(?P<id>[^/]+)/)?", func() interface{} { return &User{} })
 }
 
 // Get gets multiple users.
 func (users *Users) Get(request *gondulapi.Request) error {
-	if request.Element != "" {
-		return gondulapi.Errorf(400, "element not allowed")
-	}
-
 	var queryBuilder strings.Builder
 	nextQueryArgID := 1
 	var queryArgs []interface{}
-	_, brief := request.Args["brief"]
-	if brief {
+	if request.ListBrief {
 		queryBuilder.WriteString("SELECT id,user_name FROM users")
 	} else {
 		queryBuilder.WriteString("SELECT id,user_name,email_address,first_name,last_name FROM users")
 	}
-	if userName, ok := request.Args["user_name"]; ok && len(userName) > 0 && len(userName[0]) > 0 {
+	if userName, ok := request.ExtraArgs["user_name"]; ok && len(userName) > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" WHERE user_name = $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, userName[0])
+		queryArgs = append(queryArgs, userName)
 	}
-	if request.Limit > 0 {
+	if request.ListLimit > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, request.Limit)
+		queryArgs = append(queryArgs, request.ListLimit)
 	}
 
 	rows, err := db.DB.Query(queryBuilder.String(), queryArgs...)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
@@ -84,13 +79,13 @@ func (users *Users) Get(request *gondulapi.Request) error {
 
 	for rows.Next() {
 		var user User
-		if brief {
+		if request.ListBrief {
 			err = rows.Scan(&user.ID, &user.UserName)
 		} else {
 			err = rows.Scan(&user.ID, &user.UserName, &user.EmailAddress, &user.FirstName, &user.LastName)
 		}
 		if err != nil {
-			return gondulapi.Errorf(500, "failed to scan entity from the database")
+			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
 		}
 		*users = append(*users, &user)
 	}
@@ -100,25 +95,30 @@ func (users *Users) Get(request *gondulapi.Request) error {
 
 // Get gets a single user.
 func (user *User) Get(request *gondulapi.Request) error {
-	if request.Element == "" {
-		return gondulapi.Errorf(400, "ID required")
+	rawID, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
+	}
+	id, uuidErr := uuid.Parse(rawID)
+	if uuidErr != nil {
+		return gondulapi.Error{Code: 400, Message: "malformed UUID"}
 	}
 
-	rows, err := db.DB.Query("SELECT id,user_name,email_address,first_name,last_name FROM users WHERE id = $1", request.Element)
+	rows, err := db.DB.Query("SELECT id,user_name,email_address,first_name,last_name FROM users WHERE id = $1", id)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
 	}()
 
 	if !rows.Next() {
-		return gondulapi.Errorf(404, "not found")
+		return gondulapi.Error{Code: 404, Message: "not found"}
 	}
 
 	err = rows.Scan(&user.ID, &user.UserName, &user.EmailAddress, &user.FirstName, &user.LastName)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to parse data from database")
+		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
 
 	return nil
@@ -129,49 +129,56 @@ func (user *User) Post(request *gondulapi.Request) (gondulapi.WriteReport, error
 	if exists, err := user.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(409, "duplicate ID")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
 	if err := user.validate(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
+
 	return user.create()
 }
 
 // Put creates or updates a user.
 func (user *User) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required.")
+	rawID, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
-	id, uuidErr := uuid.Parse(request.Element)
+	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "malformed uuid")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "malformed UUID"}
 	}
+
 	if *user.ID != id {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
 	}
 	if err := user.validate(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
+
 	return user.createOrUpdate()
 }
 
 // Delete deletes a user.
 func (user *User) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required")
+	rawID, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
-	id, uuidErr := uuid.Parse(request.Element)
+	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "malformed uuid")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "malformed UUID"}
 	}
+
 	user.ID = &id
 	exists, existsErr := user.exists()
 	if existsErr != nil {
 		return gondulapi.WriteReport{Failed: 1}, existsErr
 	}
 	if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(404, "not found")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
 	}
+
 	return db.Delete("users", "id", "=", user.ID)
 }
 
@@ -210,13 +217,13 @@ func (user *User) exists() (bool, error) {
 func (user *User) validate() error {
 	switch {
 	case user.ID == nil:
-		return gondulapi.Errorf(400, "missing ID")
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	case user.UserName == nil || *user.UserName == "":
-		return gondulapi.Errorf(400, "missing username")
+		return gondulapi.Error{Code: 400, Message: "missing username"}
 	case user.EmailAddress == nil || *user.EmailAddress == "":
-		return gondulapi.Errorf(400, "missing email address")
+		return gondulapi.Error{Code: 400, Message: "missing email address"}
 	case user.FirstName == nil || *user.FirstName == "" || user.LastName == nil || *user.LastName == "":
-		return gondulapi.Errorf(400, "missing first or last name")
+		return gondulapi.Error{Code: 400, Message: "missing first or last name"}
 	default:
 		return nil
 	}

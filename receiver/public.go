@@ -44,6 +44,7 @@ package receiver
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 
 	gapi "github.com/gathering/gondulapi"
 	log "github.com/sirupsen/logrus"
@@ -52,11 +53,37 @@ import (
 // AddHandler registeres an allocator/data structure with a url. The
 // allocator should be a function returning an empty datastrcuture which
 // implements one or more of gondulapi.Getter, Putter, Poster and Deleter
-func AddHandler(url string, a Allocator) {
-	if handles == nil {
-		handles = make(map[string]Allocator)
+func AddHandler(pathPrefix string, pathPattern string, allocator Allocator) error {
+	if receiverSets == nil {
+		receiverSets = make(map[string]*receiverSet)
 	}
-	handles[url] = a
+
+	var set *receiverSet
+	if value, exists := receiverSets[pathPrefix]; exists {
+		set = value
+	} else {
+		newSet := receiverSet{pathPrefix: pathPrefix}
+		set = &newSet
+		receiverSets[pathPrefix] = &newSet
+	}
+
+	// Empty pattern should mean no suffix
+	if pathPattern == "" {
+		pathPattern = "^$"
+	}
+
+	var compiledPathPattern *regexp.Regexp
+	if result, err := regexp.Compile(pathPattern); err == nil {
+		compiledPathPattern = result
+	} else {
+		err := fmt.Errorf("invalid regexp pattern for path: %v", pathPattern)
+		log.WithError(err).Error("failed to compile path pattern for handler")
+		return err
+	}
+
+	receiver := receiver{*compiledPathPattern, allocator}
+	set.receivers = append(set.receivers, receiver)
+	return nil
 }
 
 // Allocator is used to allocate a data structure that implements at least
@@ -66,23 +93,24 @@ type Allocator func() interface{}
 // Start a net/http server and handle all requests registered. Never
 // returns.
 func Start() {
-	server := http.Server{}
+	var server http.Server
 	serveMux := http.NewServeMux()
 	server.Handler = serveMux
-	if gapi.Config.Prefix != "" {
-		log.Tracef("Prefixing URLs with %s", gapi.Config.Prefix)
-	}
-	for idx, h := range handles {
-		target := fmt.Sprintf("%s%s", gapi.Config.Prefix, idx)
-		log.Printf("Listening for %v (%T)\n", target, h())
-		serveMux.Handle(target, receiver{alloc: h, path: target})
-	}
 	if gapi.Config.ListenAddress == "" {
-		log.Printf("No listenaddress configured, using default :8080")
 		server.Addr = ":8080"
-	} else {
-		server.Addr = gapi.Config.ListenAddress
 	}
-	log.WithField("address", server.Addr).Info("Starting http receiver")
+	server.Addr = gapi.Config.ListenAddress
+
+	if receiverSets != nil {
+		for _, set := range receiverSets {
+			serveMux.Handle(gapi.Config.Prefix+set.pathPrefix, set)
+			for _, receiver := range set.receivers {
+				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.Prefix, set.pathPrefix, receiver.pathPattern, receiver.allocator())
+			}
+		}
+	}
+
+	log.WithField("listen_address", server.Addr).Info()
+	log.WithField("path_prefix", gapi.Config.Prefix).Info()
 	log.Fatal(server.ListenAndServe())
 }

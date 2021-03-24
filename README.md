@@ -61,9 +61,9 @@ update fields that are actually provided (if that is possible to detect!).
 ## Changes
 
 - Merge the slightly outdated Tech:Online version into the slightly updated mainline Gondul API version.
-- The allocators (?) unrelated to Tech:O were removed as I can't be bothered updating them.
-- Allocators based on Tech:O 2020 were added.
-- The query args are forwarded to allocators (e.g. to facilitate limiting and filtering).
+- The handlers unrelated to Tech:O were removed as I can't be bothered updating them.
+- The query args are forwarded to handlers (e.g. to facilitate limiting and filtering).
 - Added limit input for limiting the number of returned objects.
 - Fixed content type.
 - Fixed method-not-supported status code.
+- Add regex path suffix to handlers to more easily capture path values.

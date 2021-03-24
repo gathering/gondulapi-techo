@@ -28,7 +28,7 @@ curl -sSf -X POST $ENDPOINT_DOCUMENT --data '{"family_id": "reference", "local_i
 curl -sSf -X POST $ENDPOINT_DOCUMENT --data '{"family_id": "reference", "local_id": "part3", "sequence": 3, "content": "Nameless."}'
 
 # Stations
-echo
-echo "Seeding stations ..."
-ENDPOINT_STATION="${ENDPOINT}station/"
-curl -sSf -X POST $ENDPOINT_STATION --data '{"id": "1", "status": "active", "endpoint": "10.10.10.10:1000", "password": "hunter2", "notes": "Idk.\n\nAAAA"}'
+# echo
+# echo "Seeding stations ..."
+# ENDPOINT_STATION="${ENDPOINT}station/"
+# curl -sSf -X POST $ENDPOINT_STATION --data '{"id": "1", "status": "active", "endpoint": "10.10.10.10:1000", "password": "hunter2", "notes": "Idk.\n\nAAAA"}'

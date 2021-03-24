@@ -42,22 +42,22 @@ func init() {
 // Get gets a time slot.
 func (ts *TimeSlot) Get(request *gondulapi.Request) error {
 	if request.Element == "" {
-		return gondulapi.Errorf(400, "GET requires an element")
+		return gondulapi.Error{Code: 400, Message: "GET requires an element"}
 	}
 	rows, err := db.DB.Query("SELECT user_id,start_time,end_time,station_id FROM timeslots WHERE participant = $1", request.Element)
 	if err != nil {
-		return gondulapi.Errorf(500, "ops")
+		return gondulapi.Error{Code: 500, Message: "ops"}
 	}
 	defer func() {
 		rows.Close()
 	}()
 	ok := rows.Next()
 	if !ok {
-		return gondulapi.Errorf(404, "No timeslot assigned")
+		return gondulapi.Error{Code: 404, Message: "No timeslot assigned"}
 	}
 	err = rows.Scan(&ts.UserID, &ts.StartTime, &ts.EndTime, &ts.StationID)
 	if err != nil {
-		return gondulapi.Errorf(500, "Bad things")
+		return gondulapi.Error{Code: 500, Message: "Bad things"}
 	}
 	return nil
 }

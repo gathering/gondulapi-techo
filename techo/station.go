@@ -30,7 +30,9 @@ import (
 
 // Station represent a single station.
 type Station struct {
-	ID       *string `column:"id" json:"id"`                       // Required, unique
+	// TODO track
+	ID *string `column:"id" json:"id"` // Required, unique
+	// TODO enum status. PREPARING, READY, ACTIVE, DIRTY, TERMINATED, MAINTENANCE
 	Status   *string `column:"status" json:"status,omitempty"`     // Status, e.g. "active"
 	Endpoint *string `column:"endpoint" json:"endpoint,omitempty"` // Host and post for host/jumphost
 	Password *string `column:"password" json:"password,omitempty"` // Password for host
@@ -41,34 +43,30 @@ type Station struct {
 type Stations []*Station
 
 func init() {
-	receiver.AddHandler("/stations/", func() interface{} { return &Stations{} })
-	receiver.AddHandler("/station/", func() interface{} { return &Station{} })
+	receiver.AddHandler("/stations/", "", func() interface{} { return &Stations{} })
+	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?", func() interface{} { return &Station{} })
 }
 
 // Get gets multiple stations.
 func (stations *Stations) Get(request *gondulapi.Request) error {
-	if request.Element != "" {
-		return gondulapi.Errorf(400, "element not allowed")
-	}
-
 	var queryBuilder strings.Builder
 	nextQueryArgID := 1
 	var queryArgs []interface{}
 	queryBuilder.WriteString("SELECT id,status,endpoint,password,notes FROM stations")
-	if status, ok := request.Args["status"]; ok && len(status) > 0 && len(status[0]) > 0 {
+	if status, ok := request.ExtraArgs["status"]; ok && len(status) > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" WHERE status = $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, status[0])
+		queryArgs = append(queryArgs, status)
 	}
-	if request.Limit > 0 {
+	if request.ListLimit > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
 		nextQueryArgID++
-		queryArgs = append(queryArgs, request.Limit)
+		queryArgs = append(queryArgs, request.ListLimit)
 	}
 
 	rows, err := db.DB.Query(queryBuilder.String(), queryArgs...)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
@@ -78,7 +76,7 @@ func (stations *Stations) Get(request *gondulapi.Request) error {
 		var station Station
 		err = rows.Scan(&station.ID, &station.Status, &station.Endpoint, &station.Password, &station.Notes)
 		if err != nil {
-			return gondulapi.Errorf(500, "failed to scan entity from the database")
+			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
 		}
 		*stations = append(*stations, &station)
 	}
@@ -88,25 +86,26 @@ func (stations *Stations) Get(request *gondulapi.Request) error {
 
 // Get gets a single station.
 func (station *Station) Get(request *gondulapi.Request) error {
-	if request.Element == "" {
-		return gondulapi.Errorf(400, "ID required")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	rows, err := db.DB.Query("SELECT id,status,endpoint,password,notes FROM stations WHERE id = $1", request.Element)
+	rows, err := db.DB.Query("SELECT id,status,endpoint,password,notes FROM stations WHERE id = $1", id)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to query database")
+		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
 	defer func() {
 		rows.Close()
 	}()
 
 	if !rows.Next() {
-		return gondulapi.Errorf(404, "not found")
+		return gondulapi.Error{Code: 404, Message: "not found"}
 	}
 
 	err = rows.Scan(&station.ID, &station.Status, &station.Endpoint, &station.Password, &station.Notes)
 	if err != nil {
-		return gondulapi.Errorf(500, "failed to parse data from database")
+		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
 
 	return nil
@@ -117,17 +116,18 @@ func (station *Station) Post(request *gondulapi.Request) (gondulapi.WriteReport,
 	if exists, err := station.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(409, "duplicate ID")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
 	return station.create()
 }
 
 // Put creates or updates a station.
 func (station *Station) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required.")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
-	if *station.ID != request.Element {
+	if *station.ID != id {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
 	}
 	return station.createOrUpdate()
@@ -135,17 +135,18 @@ func (station *Station) Put(request *gondulapi.Request) (gondulapi.WriteReport, 
 
 // Delete deletes a station.
 func (station *Station) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if request.Element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "ID required")
+	id, idExists := request.Args["id"]
+	if !idExists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	station.ID = &request.Element
+	station.ID = &id
 	exists, err := station.exists()
 	if err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
 	if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(404, "not found")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
 	}
 	return db.Delete("stations", "id", "=", station.ID)
 }

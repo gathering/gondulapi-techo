@@ -115,7 +115,7 @@ func init() {
 // Get gets a status user.
 func (su *StatusUser) Get(request *gondulapi.Request) error {
 	if element == "" {
-		return gondulapi.Errorf(400, "GET requires an element")
+		return gondulapi.Error{Code: 400, Message: "GET requires an element"}
 	}
 	su.UserID = element
 	// TODO outdated
@@ -172,12 +172,12 @@ func (su *StatusUser) Get(request *gondulapi.Request) error {
 // Put puts a status station.
 func (ss StatusStation) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 	if element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "PUT requires an element path to put")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "PUT requires an element path to put"}
 	}
 	station := Station{}
 	err := station.Get(element)
 	if err != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(404, "No such station")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "No such station"}
 	}
 	ss.Delete(element)
 	for _, t := range ss.Tests {
@@ -192,7 +192,7 @@ func (ss StatusStation) Put(request *gondulapi.Request) (gondulapi.WriteReport, 
 // Get gets a status station.
 func (ss *StatusStation) Get(request *gondulapi.Request) error {
 	if element == "" {
-		return gondulapi.Errorf(400, "GET requires an element")
+		return gondulapi.Error{Code: 400, Message: "GET requires an element"}
 	}
 
 	rows, err := db.DB.Query("SELECT title,description,status,task FROM status WHERE stationid = $1 order by title", element)
@@ -221,7 +221,7 @@ func (ss *StatusStation) Get(request *gondulapi.Request) error {
 // Delete deletes a status user.
 func (ss StatusStation) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 	if element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "DELETE requires an element")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "DELETE requires an element"}
 	}
 	_, err := db.DB.Exec("DELETE FROM status WHERE stationid = $1", element)
 	if err != nil {
@@ -261,7 +261,7 @@ func (tasks *Tasks) Get(request *gondulapi.Request) error {
 // Get gets a task.
 func (task *Task) Get(request *gondulapi.Request) error {
 	if element == "" {
-		return gondulapi.Errorf(400, "GET requires an element")
+		return gondulapi.Error{Code: 400, Message: "GET requires an element"}
 	}
 	rows, err := db.DB.Query("SELECT seq,shortname,name,description FROM tasks WHERE shortname = $1", element)
 	if err != nil {
@@ -272,7 +272,7 @@ func (task *Task) Get(request *gondulapi.Request) error {
 	}()
 	ok := rows.Next()
 	if !ok {
-		return gondulapi.Errorf(404, "Task not found")
+		return gondulapi.Error{Code: 404, Message: "Task not found"}
 	}
 	err = rows.Scan(&task.Sequence, &task.Shortname, &task.Name, &task.Description)
 	if err != nil {
@@ -284,7 +284,7 @@ func (task *Task) Get(request *gondulapi.Request) error {
 // Delete deletes a task.
 func (task Task) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 	if element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "PUT requires an element path to put")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "PUT requires an element path to put"}
 	}
 	_, err := db.DB.Exec("DELETE FROM tasks WHERE shortname = $1", element)
 	log.Printf("delete task err: %v", err)
@@ -297,7 +297,7 @@ func (task Task) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) 
 		task.Shortname = &element
 	}
 	if element == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "PUT requires an element path to put")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "PUT requires an element path to put"}
 	}
 	if element != *task.Shortname {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "PUT where path element (%s) doesn't match shortname (%s) - pick one", element, task.Shortname)
@@ -372,7 +372,7 @@ func (t Test) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 // all fields to be present in the data instead.
 func (t Test) Post(request *gondulapi.Request) (gondulapi.WriteReport, error) {
 	if t.Track == nil || *t.Track == "" || t.StationID == nil || *t.StationID == 0 || t.Hash == nil || *t.Hash == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Errorf(400, "POST must define both track and station as non-0 values")
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "POST must define both track and station as non-0 values"}
 	}
 	return db.Upsert(t, "results", "track", "=", t.Track, "station", "=", t.StationID, "hash", "=", t.Hash)
 }
