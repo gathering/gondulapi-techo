@@ -53,7 +53,7 @@ func (stations *Stations) Get(request *gondulapi.Request) error {
 	nextQueryArgID := 1
 	var queryArgs []interface{}
 	queryBuilder.WriteString("SELECT id,status,endpoint,password,notes FROM stations")
-	if status, ok := request.ExtraArgs["status"]; ok && len(status) > 0 {
+	if status, ok := request.QueryArgs["status"]; ok && len(status) > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" WHERE status = $%v", nextQueryArgID))
 		nextQueryArgID++
 		queryArgs = append(queryArgs, status)
@@ -86,7 +86,7 @@ func (stations *Stations) Get(request *gondulapi.Request) error {
 
 // Get gets a single station.
 func (station *Station) Get(request *gondulapi.Request) error {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -123,7 +123,7 @@ func (station *Station) Post(request *gondulapi.Request) (gondulapi.WriteReport,
 
 // Put creates or updates a station.
 func (station *Station) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -135,7 +135,7 @@ func (station *Station) Put(request *gondulapi.Request) (gondulapi.WriteReport, 
 
 // Delete deletes a station.
 func (station *Station) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}

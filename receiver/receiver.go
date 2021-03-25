@@ -167,31 +167,31 @@ func handleRequest(receiver *receiver, input input) (output output) {
 	}
 
 	var request gondulapi.Request
-	request.Args = make(map[string]string)
+	request.PathArgs = make(map[string]string)
 	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
 	argCaptureNames := receiver.pathPattern.SubexpNames()
 	for i := range argCaptures {
 		if i > 0 {
 			if argCaptureNames[i] != "" {
-				request.Args[argCaptureNames[i]] = argCaptures[i]
+				request.PathArgs[argCaptureNames[i]] = argCaptures[i]
 			}
 		}
 	}
-	request.ExtraArgs = make(map[string]string)
+	request.QueryArgs = make(map[string]string)
 	for key, value := range input.query {
 		// Only use first arg for each key
 		if len(value) > 0 {
-			request.ExtraArgs[key] = value[0]
+			request.QueryArgs[key] = value[0]
 		} else {
-			request.ExtraArgs[key] = ""
+			request.QueryArgs[key] = ""
 		}
 	}
-	if value, exists := request.ExtraArgs["limit"]; exists {
+	if value, exists := request.QueryArgs["limit"]; exists {
 		if i, err := strconv.Atoi(value); err == nil {
 			request.ListLimit = i
 		}
 	}
-	if _, exists := request.ExtraArgs["brief"]; exists {
+	if _, exists := request.QueryArgs["brief"]; exists {
 		request.ListBrief = true
 	}
 

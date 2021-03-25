@@ -118,15 +118,17 @@ CREATE UNIQUE INDEX public_document_families_id_index ON public.document_familie
 
 -- Documents table
 CREATE TABLE public.documents (
+    id text NOT NULL UNIQUE,
     family_id text NOT NULL,
-    local_id text NOT NULL,
+    shortname text NOT NULL,
     sequence integer,
     name text,
     content text,
     content_format text,
-    UNIQUE (family_id, local_id)
+    UNIQUE (family_id, shortname)
 );
-CREATE UNIQUE INDEX public_documents_id_index ON public.documents (family_id, local_id);
+CREATE UNIQUE INDEX public_documents_id_index ON public.documents (id);
+CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents (family_id, shortname);
 
 -- Stations table
 CREATE TABLE public.stations (

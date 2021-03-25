@@ -25,6 +25,7 @@ import (
 
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
+	"github.com/gathering/gondulapi/helper"
 	"github.com/gathering/gondulapi/receiver"
 	"github.com/google/uuid"
 )
@@ -33,7 +34,7 @@ import (
 // information. This is retrieved from the frontend, so where it comes from
 // is somewhat irrelevant.
 type User struct {
-	ID           *uuid.UUID `column:"id" json:"id"`                                 // Required, unique (TODO generate or get from IdP?)
+	ID           *uuid.UUID `column:"id" json:"id"`                                 // Required, unique
 	UserName     *string    `column:"user_name" json:"user_name,omitempty"`         // Required, unique
 	EmailAddress *string    `column:"email_address" json:"email_address,omitempty"` // Required
 	FirstName    *string    `column:"first_name" json:"first_name,omitempty"`       // Required
@@ -58,7 +59,7 @@ func (users *Users) Get(request *gondulapi.Request) error {
 	} else {
 		queryBuilder.WriteString("SELECT id,user_name,email_address,first_name,last_name FROM users")
 	}
-	if userName, ok := request.ExtraArgs["user_name"]; ok && len(userName) > 0 {
+	if userName, ok := request.QueryArgs["user_name"]; ok && len(userName) > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" WHERE user_name = $%v", nextQueryArgID))
 		nextQueryArgID++
 		queryArgs = append(queryArgs, userName)
@@ -95,7 +96,7 @@ func (users *Users) Get(request *gondulapi.Request) error {
 
 // Get gets a single user.
 func (user *User) Get(request *gondulapi.Request) error {
-	rawID, idExists := request.Args["id"]
+	rawID, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -131,6 +132,17 @@ func (user *User) Post(request *gondulapi.Request) (gondulapi.WriteReport, error
 	} else if exists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
+
+	if ok, err := user.checkUniqueFields(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	} else if !ok {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "username already exists"}
+	}
+
+	if user.ID == nil {
+		newID := uuid.New()
+		user.ID = &newID
+	}
 	if err := user.validate(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	}
@@ -140,13 +152,19 @@ func (user *User) Post(request *gondulapi.Request) (gondulapi.WriteReport, error
 
 // Put creates or updates a user.
 func (user *User) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	rawID, idExists := request.Args["id"]
+	rawID, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "malformed UUID"}
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "invalid ID"}
+	}
+
+	if ok, err := user.checkUniqueFields(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	} else if !ok {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "username already exists"}
 	}
 
 	if *user.ID != id {
@@ -161,7 +179,7 @@ func (user *User) Put(request *gondulapi.Request) (gondulapi.WriteReport, error)
 
 // Delete deletes a user.
 func (user *User) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	rawID, idExists := request.Args["id"]
+	rawID, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -214,15 +232,28 @@ func (user *User) exists() (bool, error) {
 	return hasNext, nil
 }
 
+func (user *User) checkUniqueFields() (bool, error) {
+	rows, err := db.DB.Query("SELECT id FROM users WHERE user_name = $1", user.UserName)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	hasNext := rows.Next()
+	return !hasNext, nil
+}
+
 func (user *User) validate() error {
 	switch {
 	case user.ID == nil:
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
-	case user.UserName == nil || *user.UserName == "":
+	case helper.IsEmpty(user.UserName):
 		return gondulapi.Error{Code: 400, Message: "missing username"}
-	case user.EmailAddress == nil || *user.EmailAddress == "":
+	case helper.IsEmpty(user.EmailAddress):
 		return gondulapi.Error{Code: 400, Message: "missing email address"}
-	case user.FirstName == nil || *user.FirstName == "" || user.LastName == nil || *user.LastName == "":
+	case helper.IsEmpty(user.FirstName):
 		return gondulapi.Error{Code: 400, Message: "missing first or last name"}
 	default:
 		return nil

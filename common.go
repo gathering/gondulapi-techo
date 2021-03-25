@@ -52,10 +52,10 @@ import "fmt"
 // Request contains the last part of the URL (without the handler prefix), certain query args,
 // and a limit on how many elements to get.
 type Request struct {
-	Args      map[string]string // Path args
-	ExtraArgs map[string]string // Query args
-	ListLimit int               // How many elements to return in listings
-	ListBrief bool              // If only the most relevant fields should be included listings
+	PathArgs  map[string]string
+	QueryArgs map[string]string
+	ListLimit int  // How many elements to return in listings
+	ListBrief bool // If only the most relevant fields should be included listings
 }
 
 // WriteReport is an update report on write-requests. The precise meaning might

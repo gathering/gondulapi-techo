@@ -25,7 +25,9 @@ import (
 
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
+	"github.com/gathering/gondulapi/helper"
 	"github.com/gathering/gondulapi/receiver"
+	"github.com/google/uuid"
 )
 
 // DocumentFamily is a category of documents.
@@ -39,12 +41,13 @@ type DocumentFamilies []*DocumentFamily
 
 // Document is a document.
 type Document struct {
-	FamilyID      *string `column:"family_id" json:"family_id"`         // Required, unique with local ID
-	LocalID       *string `column:"local_id" json:"local_id"`           // Required, unique with family ID
-	Sequence      *int    `column:"sequence" json:"sequence,omitempty"` // For sorting
-	Name          *string `column:"name" json:"name,omitempty"`
-	Content       *string `column:"content" json:"content,omitempty"`
-	ContentFormat *string `column:"content_format" json:"content_format,omitempty"` // E.g. "plaintext" or "markdown"
+	ID            *uuid.UUID `column:"id" json:"id"`               // Required, unique
+	FamilyID      *string    `column:"family_id" json:"family_id"` // Required
+	Shortname     *string    `column:"shortname" json:"shortname"` // Required, unique with family ID
+	Name          *string    `column:"name" json:"name,omitempty"`
+	Content       *string    `column:"content" json:"content,omitempty"`
+	ContentFormat *string    `column:"content_format" json:"content_format,omitempty"` // E.g. "plaintext" or "markdown"
+	Sequence      *int       `column:"sequence" json:"sequence,omitempty"`             // For sorting
 }
 
 // Documents is a list of documents.
@@ -54,7 +57,7 @@ func init() {
 	receiver.AddHandler("/document-families/", "", func() interface{} { return &DocumentFamilies{} })
 	receiver.AddHandler("/document-family/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &DocumentFamily{} })
 	receiver.AddHandler("/documents/", "", func() interface{} { return &Documents{} })
-	receiver.AddHandler("/document/", "^(?:(?P<family_id>[^/]+)/(?P<local_id>[^/]+)/)?$", func() interface{} { return &Document{} })
+	receiver.AddHandler("/document/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Document{} })
 }
 
 // Get gets multiple families.
@@ -91,7 +94,7 @@ func (families *DocumentFamilies) Get(request *gondulapi.Request) error {
 
 // Get gets a single family.
 func (family *DocumentFamily) Get(request *gondulapi.Request) error {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -128,7 +131,7 @@ func (family *DocumentFamily) Post(request *gondulapi.Request) (gondulapi.WriteR
 
 // Put creates or updates a family.
 func (family *DocumentFamily) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -142,7 +145,7 @@ func (family *DocumentFamily) Put(request *gondulapi.Request) (gondulapi.WriteRe
 
 // Delete deletes a family.
 func (family *DocumentFamily) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.Args["id"]
+	id, idExists := request.PathArgs["id"]
 	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
@@ -197,15 +200,22 @@ func (documents *Documents) Get(request *gondulapi.Request) error {
 	nextQueryArgID := 1
 	var queryArgs []interface{}
 	if request.ListBrief {
-		queryBuilder.WriteString("SELECT family_id,local_id,name,sequence FROM documents")
+		queryBuilder.WriteString("SELECT id,family_id,shortname,name,sequence FROM documents WHERE family_id LIKE $1 AND shortname LIKE $2")
 	} else {
-		queryBuilder.WriteString("SELECT family_id,local_id,name,sequence,content,content_format FROM documents")
+		queryBuilder.WriteString("SELECT id,family_id,shortname,name,sequence,content,content_format FROM documents WHERE family_id LIKE $1 AND shortname LIKE $2")
 	}
-	if familyID, ok := request.ExtraArgs["family_id"]; ok && len(familyID) > 0 {
-		queryBuilder.WriteString(fmt.Sprintf(" WHERE family_id = $%v", nextQueryArgID))
-		nextQueryArgID++
-		queryArgs = append(queryArgs, familyID)
+	familyIDArg := "%"
+	if familyID, ok := request.QueryArgs["family"]; ok {
+		familyIDArg = familyID
 	}
+	nextQueryArgID++
+	queryArgs = append(queryArgs, familyIDArg)
+	shortnameArg := "%"
+	if shortname, ok := request.QueryArgs["shortname"]; ok {
+		shortnameArg = shortname
+	}
+	nextQueryArgID++
+	queryArgs = append(queryArgs, shortnameArg)
 	if request.ListLimit > 0 {
 		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
 		nextQueryArgID++
@@ -223,9 +233,9 @@ func (documents *Documents) Get(request *gondulapi.Request) error {
 	for rows.Next() {
 		var document Document
 		if request.ListBrief {
-			err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence)
+			err = rows.Scan(&document.ID, &document.FamilyID, &document.Shortname, &document.Name, &document.Sequence)
 		} else {
-			err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
+			err = rows.Scan(&document.ID, &document.FamilyID, &document.Shortname, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
 		}
 		if err != nil {
 			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
@@ -238,13 +248,12 @@ func (documents *Documents) Get(request *gondulapi.Request) error {
 
 // Get gets a single document.
 func (document *Document) Get(request *gondulapi.Request) error {
-	familyID, familyIDExists := request.Args["family_id"]
-	localID, localIDExists := request.Args["local_id"]
-	if !familyIDExists || !localIDExists {
+	id, idExists := request.PathArgs["id"]
+	if !idExists {
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	rows, err := db.DB.Query("SELECT family_id,local_id,name,sequence,content,content_format FROM documents WHERE family_id = $1 AND local_id = $2", familyID, localID)
+	rows, err := db.DB.Query("SELECT id,family_id,shortname,name,sequence,content,content_format FROM documents WHERE id = $1", id)
 	if err != nil {
 		return gondulapi.Error{Code: 500, Message: "failed to query database"}
 	}
@@ -256,7 +265,7 @@ func (document *Document) Get(request *gondulapi.Request) error {
 		return gondulapi.Error{Code: 404, Message: "not found"}
 	}
 
-	err = rows.Scan(&document.FamilyID, &document.LocalID, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
+	err = rows.Scan(&document.ID, &document.FamilyID, &document.Shortname, &document.Name, &document.Sequence, &document.Content, &document.ContentFormat)
 	if err != nil {
 		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
@@ -266,21 +275,24 @@ func (document *Document) Get(request *gondulapi.Request) error {
 
 // Post creates a new document.
 func (document *Document) Post(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	if document.FamilyID == nil || *document.FamilyID == "" || document.LocalID == nil || *document.LocalID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family and local IDs required"}
+	if helper.IsEmpty(document.FamilyID) || helper.IsEmpty(document.Shortname) {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family and shortname required"}
 	}
 
+	if ok, err := document.checkUniqueFields(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	} else if !ok {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "combination of family and shortname already exists"}
+	}
+
+	if document.ID == nil {
+		newID := uuid.New()
+		document.ID = &newID
+	}
 	if exists, err := document.exists(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
 	} else if exists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
-	}
-
-	family := DocumentFamily{ID: document.FamilyID}
-	if exists, err := family.exists(); err != nil {
-		return gondulapi.WriteReport{Failed: 1}, err
-	} else if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family does not exist"}
 	}
 
 	return document.create()
@@ -288,24 +300,19 @@ func (document *Document) Post(request *gondulapi.Request) (gondulapi.WriteRepor
 
 // Put creates or updates a document.
 func (document *Document) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	familyID, familyIDExists := request.Args["family_id"]
-	localID, localIDExists := request.Args["local_id"]
-	if !familyIDExists || !localIDExists {
+	id, idExists := request.PathArgs["id"]
+	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	if document.FamilyID == nil || *document.FamilyID == "" || document.LocalID == nil || *document.LocalID == "" {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family and local IDs required"}
-	}
-	if *document.FamilyID != familyID || *document.LocalID != localID {
+	if (*document.ID).String() != id {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
 	}
 
-	family := DocumentFamily{ID: document.FamilyID}
-	if exists, err := family.exists(); err != nil {
+	if ok, err := document.checkUniqueFields(); err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
-	} else if !exists {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "family does not exist"}
+	} else if !ok {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "combination of family and shortname already exists"}
 	}
 
 	return document.createOrUpdate()
@@ -313,14 +320,16 @@ func (document *Document) Put(request *gondulapi.Request) (gondulapi.WriteReport
 
 // Delete deletes a document.
 func (document *Document) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	familyID, familyIDExists := request.Args["family_id"]
-	localID, localIDExists := request.Args["local_id"]
-	if !familyIDExists || !localIDExists {
+	id, idExists := request.PathArgs["id"]
+	if !idExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
+	uuid, uuidError := uuid.Parse(id)
+	if uuidError != nil {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "invalid ID"}
+	}
 
-	document.FamilyID = &familyID
-	document.LocalID = &localID
+	document.ID = &uuid
 	exists, err := document.exists()
 	if err != nil {
 		return gondulapi.WriteReport{Failed: 1}, err
@@ -328,7 +337,7 @@ func (document *Document) Delete(request *gondulapi.Request) (gondulapi.WriteRep
 	if !exists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
 	}
-	return db.Delete("documents", "family_id", "=", document.FamilyID, "local_id", "=", document.LocalID)
+	return db.Delete("documents", "id", "=", document.FamilyID)
 }
 
 func (document *Document) createOrUpdate() (gondulapi.WriteReport, error) {
@@ -347,11 +356,11 @@ func (document *Document) create() (gondulapi.WriteReport, error) {
 }
 
 func (document *Document) update() (gondulapi.WriteReport, error) {
-	return db.Update("documents", document, "family_id", "=", document.FamilyID, "local_id", "=", document.LocalID)
+	return db.Update("documents", document, "id", "=", document.ID)
 }
 
 func (document *Document) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT family_id,local_id FROM documents WHERE family_id = $1 AND local_id = $2", document.FamilyID, document.LocalID)
+	rows, err := db.DB.Query("SELECT id FROM documents WHERE id = $1", document.ID)
 	if err != nil {
 		return false, err
 	}
@@ -361,4 +370,17 @@ func (document *Document) exists() (bool, error) {
 
 	hasNext := rows.Next()
 	return hasNext, nil
+}
+
+func (document *Document) checkUniqueFields() (bool, error) {
+	rows, err := db.DB.Query("SELECT id FROM documents WHERE family_id = $1 AND shortname = $2", document.FamilyID, document.Shortname)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	hasNext := rows.Next()
+	return !hasNext, nil
 }
