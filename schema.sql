@@ -112,30 +112,85 @@ CREATE UNIQUE INDEX public_users_user_name_index ON public.users (user_name);
 -- Document families table
 CREATE TABLE public.document_families (
     id text NOT NULL UNIQUE,
-    name text
+    name text NOT NULL
 );
 CREATE UNIQUE INDEX public_document_families_id_index ON public.document_families (id);
 
 -- Documents table
 CREATE TABLE public.documents (
     id text NOT NULL UNIQUE,
-    family_id text NOT NULL,
+    family text NOT NULL,
     shortname text NOT NULL,
     sequence integer,
-    name text,
-    content text,
-    content_format text,
-    UNIQUE (family_id, shortname)
+    name text NOT NULL,
+    content text NOT NULL,
+    content_format text NOT NULL,
+    last_change timestamp with time zone NOT NULL,
+    UNIQUE (family, shortname)
 );
 CREATE UNIQUE INDEX public_documents_id_index ON public.documents (id);
-CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents (family_id, shortname);
+CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents (family, shortname);
+
+-- Tracks table
+CREATE TABLE public.tracks (
+    id text NOT NULL UNIQUE,
+    type text NOT NULL,
+    station_permanent boolean NOT NULL,
+    station_create_url text NOT NULL,
+    station_destroy_url text NOT NULL,
+    station_count_max int NOT NULL
+);
+CREATE UNIQUE INDEX public_tracks_id_index ON public.tracks (id);
+
+-- Tasks table
+CREATE TABLE public.tasks (
+    id text NOT NULL UNIQUE,
+    track text NOT NULL,
+    shortname text NOT NULL,
+    name text NOT NULL,
+    description text NOT NULL,
+    sequence int,
+    UNIQUE (track, shortname)
+);
+CREATE UNIQUE INDEX public_tasks_id_index ON public.tasks (id);
 
 -- Stations table
 CREATE TABLE public.stations (
     id text NOT NULL UNIQUE,
-    status text,
-    endpoint text,
-    password text,
-    notes text
+    track text NOT NULL,
+    shortname text NOT NULL,
+    status text NOT NULL,
+    credentials text NOT NULL,
+    notes text NOT NULL,
+    UNIQUE (track, shortname)
 );
 CREATE UNIQUE INDEX public_stations_id_index ON public.stations (id);
+
+-- Timeslots table
+CREATE TABLE public.timeslots (
+    id text NOT NULL UNIQUE,
+    user_id text NOT NULL,
+    track text NOT NULL,
+    station_shortname text NOT NULL,
+    begin_time timestamp with time zone,
+    end_time timestamp with time zone
+);
+CREATE UNIQUE INDEX public_timeslots_id_index ON public.timeslots (id);
+
+-- Tests table
+CREATE TABLE public.tests (
+    id text NOT NULL UNIQUE,
+    track text NOT NULL,
+    task_shortname text NOT NULL,
+    shortname text NOT NULL,
+    station_shortname text NOT NULL,
+    timeslot text NOT NULL,
+    name text NOT NULL,
+    description text NOT NULL,
+    sequence int,
+    timestamp timestamp with time zone NOT NULL,
+    status_success boolean NOT NULL,
+    status_description text NOT NULL,
+    UNIQUE (track, task_shortname, shortname, station_shortname, timeslot)
+);
+CREATE UNIQUE INDEX public_tests_id_index ON public.tests (id);

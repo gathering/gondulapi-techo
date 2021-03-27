@@ -67,11 +67,6 @@ func AddHandler(pathPrefix string, pathPattern string, allocator Allocator) erro
 		receiverSets[pathPrefix] = &newSet
 	}
 
-	// Empty pattern should mean no suffix
-	if pathPattern == "" {
-		pathPattern = "^$"
-	}
-
 	var compiledPathPattern *regexp.Regexp
 	if result, err := regexp.Compile(pathPattern); err == nil {
 		compiledPathPattern = result
@@ -105,7 +100,7 @@ func Start() {
 		for _, set := range receiverSets {
 			serveMux.Handle(gapi.Config.Prefix+set.pathPrefix, set)
 			for _, receiver := range set.receivers {
-				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.Prefix, set.pathPrefix, receiver.pathPattern, receiver.allocator())
+				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.Prefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
 			}
 		}
 	}

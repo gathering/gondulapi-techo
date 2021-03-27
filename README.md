@@ -67,3 +67,12 @@ update fields that are actually provided (if that is possible to detect!).
 - Fixed content type.
 - Fixed method-not-supported status code.
 - Add regex path suffix to handlers to more easily capture path values.
+
+## TODO
+
+- Fix the copyright notice in some source files for stuff Kristian didn't write.
+- DB ordering and limiting.
+- Brief listing (query option to hide details when listing many elements).
+- Consistency between objects? Use foreign keys instead of string references for something that may or may not exist.
+- Authentication (OpenID Connect, authorization code flow?). (Or Kristian's auth in the main repo.)
+- Authorization (hard coded).

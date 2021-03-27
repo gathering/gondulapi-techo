@@ -94,6 +94,9 @@ func buildWhere(offset int, search []Selector) (string, []interface{}) {
 	strsearch := ""
 	searcharr := make([]interface{}, 0)
 	tmpand := ""
+	if len(search) > 0 {
+		strsearch = " WHERE "
+	}
 	for idx, item := range search {
 		strsearch = fmt.Sprintf("%s %s %s %s $%d", strsearch, tmpand, item.Haystack, item.Operator, offset+idx+1)
 		tmpand = " AND "
@@ -181,7 +184,7 @@ func SelectMany(d interface{}, table string, searcher ...interface{}) error {
 		comma = ","
 	}
 	strsearch, searcharr := buildWhere(0, search)
-	q := fmt.Sprintf("SELECT %s FROM %s WHERE %s", keys, table, strsearch)
+	q := fmt.Sprintf("SELECT %s FROM %s%s", keys, table, strsearch)
 	log.WithField("query", q).Tracef("Select()")
 	rows, err := DB.Query(q, searcharr...)
 	if err != nil {

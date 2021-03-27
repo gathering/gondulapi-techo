@@ -21,64 +21,63 @@ package techo
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
 	"github.com/gathering/gondulapi/receiver"
+	"github.com/google/uuid"
 )
 
-// Station represent a single station.
+/*
+ * TODO:
+ * - Don't show credentials to participants before they're time slot is active.
+ */
+
+// StationStatus is the station status.
+type StationStatus string
+
+const (
+	stationStatusPreparing   StationStatus = "preparing"
+	stationStatusActive      StationStatus = "active"
+	stationStatusDirty       StationStatus = "dirty"
+	stationStatusTerminated  StationStatus = "terminated"
+	stationStatusMaintenance StationStatus = "maintenance"
+)
+
+// Station is station.
 type Station struct {
-	// TODO track
-	ID *string `column:"id" json:"id"` // Required, unique
-	// TODO enum status. PREPARING, READY, ACTIVE, DIRTY, TERMINATED, MAINTENANCE
-	Status   *string `column:"status" json:"status,omitempty"`     // Status, e.g. "active"
-	Endpoint *string `column:"endpoint" json:"endpoint,omitempty"` // Host and post for host/jumphost
-	Password *string `column:"password" json:"password,omitempty"` // Password for host
-	Notes    *string `column:"notes" json:"notes,omitempty"`       // Misc. notes to show to user. Typically track-specific
+	ID          *uuid.UUID    `column:"id" json:"id"`                   // Generated, required, unique
+	TrackID     string        `column:"track" json:"track"`             // Required
+	Shortname   string        `column:"shortname" json:"shortname"`     // Required
+	Status      StationStatus `column:"status" json:"status"`           // Required
+	Credentials string        `column:"credentials" json:"credentials"` // Host, port, password, etc. (typically hidden)
+	Notes       string        `column:"notes" json:"notes"`             // Misc. notes
 }
 
 // Stations is a list of stations.
 type Stations []*Station
 
 func init() {
-	receiver.AddHandler("/stations/", "", func() interface{} { return &Stations{} })
+	receiver.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
 	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?", func() interface{} { return &Station{} })
 }
 
 // Get gets multiple stations.
 func (stations *Stations) Get(request *gondulapi.Request) error {
-	var queryBuilder strings.Builder
-	nextQueryArgID := 1
-	var queryArgs []interface{}
-	queryBuilder.WriteString("SELECT id,status,endpoint,password,notes FROM stations")
-	if status, ok := request.QueryArgs["status"]; ok && len(status) > 0 {
-		queryBuilder.WriteString(fmt.Sprintf(" WHERE status = $%v", nextQueryArgID))
-		nextQueryArgID++
-		queryArgs = append(queryArgs, status)
+	var whereArgs []interface{}
+	if shortname, ok := request.QueryArgs["shortname"]; ok {
+		whereArgs = append(whereArgs, "shortname", "=", shortname)
 	}
-	if request.ListLimit > 0 {
-		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%v", nextQueryArgID))
-		nextQueryArgID++
-		queryArgs = append(queryArgs, request.ListLimit)
+	if trackID, ok := request.QueryArgs["track"]; ok {
+		whereArgs = append(whereArgs, "track", "=", trackID)
+	}
+	if status, ok := request.QueryArgs["status"]; ok {
+		whereArgs = append(whereArgs, "status", "=", status)
 	}
 
-	rows, err := db.DB.Query(queryBuilder.String(), queryArgs...)
-	if err != nil {
+	selectErr := db.SelectMany(stations, "stations", whereArgs...)
+	if selectErr != nil {
 		return gondulapi.Error{Code: 500, Message: "failed to query database"}
-	}
-	defer func() {
-		rows.Close()
-	}()
-
-	for rows.Next() {
-		var station Station
-		err = rows.Scan(&station.ID, &station.Status, &station.Endpoint, &station.Password, &station.Notes)
-		if err != nil {
-			return gondulapi.Error{Code: 500, Message: "failed to scan entity from the database"}
-		}
-		*stations = append(*stations, &station)
 	}
 
 	return nil
@@ -91,21 +90,12 @@ func (station *Station) Get(request *gondulapi.Request) error {
 		return gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
 
-	rows, err := db.DB.Query("SELECT id,status,endpoint,password,notes FROM stations WHERE id = $1", id)
+	found, err := db.Select(station, "stations", "id", "=", id)
 	if err != nil {
-		return gondulapi.Error{Code: 500, Message: "failed to query database"}
+		return err
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	if !rows.Next() {
+	if !found {
 		return gondulapi.Error{Code: 404, Message: "not found"}
-	}
-
-	err = rows.Scan(&station.ID, &station.Status, &station.Endpoint, &station.Password, &station.Notes)
-	if err != nil {
-		return gondulapi.Error{Code: 500, Message: "failed to parse data from database"}
 	}
 
 	return nil
@@ -118,26 +108,47 @@ func (station *Station) Post(request *gondulapi.Request) (gondulapi.WriteReport,
 	} else if exists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate ID"}
 	}
+
+	if station.ID == nil {
+		newID := uuid.New()
+		station.ID = &newID
+	}
+	if err := station.validate(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	}
+
 	return station.create()
 }
 
-// Put creates or updates a station.
+// Put updates a station.
 func (station *Station) Put(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	rawID, rawIDExists := request.PathArgs["id"]
+	if !rawIDExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
 	}
+	id, uuidErr := uuid.Parse(rawID)
+	if uuidErr != nil {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "invalid ID"}
+	}
+
 	if *station.ID != id {
 		return gondulapi.WriteReport{Failed: 1}, fmt.Errorf("mismatch between URL and JSON IDs")
 	}
-	return station.createOrUpdate()
+	if err := station.validate(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	}
+	return station.update()
 }
 
 // Delete deletes a station.
 func (station *Station) Delete(request *gondulapi.Request) (gondulapi.WriteReport, error) {
-	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	rawID, rawIDExists := request.PathArgs["id"]
+	if !rawIDExists {
 		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "missing ID"}
+	}
+	id, uuidErr := uuid.Parse(rawID)
+	if uuidErr != nil {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 400, Message: "invalid ID"}
 	}
 
 	station.ID = &id
@@ -151,22 +162,23 @@ func (station *Station) Delete(request *gondulapi.Request) (gondulapi.WriteRepor
 	return db.Delete("stations", "id", "=", station.ID)
 }
 
-func (station *Station) createOrUpdate() (gondulapi.WriteReport, error) {
-	exists, err := station.exists()
-	if err != nil {
-		return gondulapi.WriteReport{Failed: 1}, err
-	}
-	if exists {
-		return station.update()
-	}
-	return station.create()
-}
-
 func (station *Station) create() (gondulapi.WriteReport, error) {
+	if exists, err := station.exists(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	} else if exists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 409, Message: "duplicate"}
+	}
+
 	return db.Insert("stations", station)
 }
 
 func (station *Station) update() (gondulapi.WriteReport, error) {
+	if exists, err := station.exists(); err != nil {
+		return gondulapi.WriteReport{Failed: 1}, err
+	} else if !exists {
+		return gondulapi.WriteReport{Failed: 1}, gondulapi.Error{Code: 404, Message: "not found"}
+	}
+
 	return db.Update("stations", station, "id", "=", station.ID)
 }
 
@@ -181,4 +193,73 @@ func (station *Station) exists() (bool, error) {
 
 	hasNext := rows.Next()
 	return hasNext, nil
+}
+
+func (station *Station) existsShortname() (bool, error) {
+	rows, err := db.DB.Query("SELECT id FROM stations WHERE track = $1 AND shortname = $2", station.TrackID, station.Shortname)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	hasNext := rows.Next()
+	return hasNext, nil
+}
+
+func (station *Station) validate() error {
+	switch {
+	case station.ID == nil:
+		return gondulapi.Error{Code: 400, Message: "missing ID"}
+	case station.TrackID == "":
+		return gondulapi.Error{Code: 400, Message: "missing track ID"}
+	case !station.validateStatus():
+		return gondulapi.Error{Code: 400, Message: "missing or invalid status"}
+	}
+
+	if ok, err := station.checkUniqueFields(); err != nil {
+		return err
+	} else if !ok {
+		return gondulapi.Error{Code: 409, Message: "combination of track and shortname already exists"}
+	}
+
+	track := Track{ID: station.TrackID}
+	if exists, err := track.exists(); err != nil {
+		return err
+	} else if !exists {
+		return gondulapi.Error{Code: 400, Message: "referenced track does not exist"}
+	}
+
+	return nil
+}
+
+func (station *Station) validateStatus() bool {
+	switch station.Status {
+	case stationStatusPreparing:
+		fallthrough
+	case stationStatusActive:
+		fallthrough
+	case stationStatusDirty:
+		fallthrough
+	case stationStatusTerminated:
+		fallthrough
+	case stationStatusMaintenance:
+		return true
+	default:
+		return false
+	}
+}
+
+func (station *Station) checkUniqueFields() (bool, error) {
+	rows, err := db.DB.Query("SELECT id FROM stations WHERE id != $1 AND track = $2 AND shortname = $3", station.ID, station.TrackID, station.Shortname)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	hasNext := rows.Next()
+	return !hasNext, nil
 }
