@@ -48,6 +48,7 @@ import (
 	"regexp"
 
 	gapi "github.com/gathering/gondulapi"
+	"github.com/gathering/gondulapi/auth"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -97,8 +98,9 @@ func Start() {
 	}
 	server.Addr = gapi.Config.ListenAddress
 
-	// serveMux.Handle(gapi.Config.SitePrefix+"/auth/", auth.Handler)
-	// log.Infof("Added auth handler.")
+	// TODO fix redirect URL
+	serveMux.Handle("/login", auth.MakeAuthenticator())
+	log.Infof("Added auth handlers.")
 
 	if receiverSets != nil {
 		for _, set := range receiverSets {

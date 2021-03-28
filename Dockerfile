@@ -10,6 +10,7 @@ RUN go mod download
 
 # Build app
 COPY cmd cmd
+COPY auth auth
 COPY db db
 COPY helper helper
 COPY receiver receiver

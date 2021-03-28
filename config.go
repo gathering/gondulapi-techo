@@ -29,11 +29,16 @@ import (
 // Config covers global configuration, and if need be it will provide
 // mechanisms for local overrides (similar to Skogul).
 var Config struct {
-	ListenAddress string                       `json:"listen_address"` // Defaults to :8080
-	DB            string                       `json:"db"`             // For database connections
-	SitePrefix    string                       `json:"site_prefix"`    // URL prefix, e.g. "/api"
-	Debug         bool                         `json:"debug"`          // Enables trace-debugging
-	ServerTracks  map[string]ServerTrackConfig `json:"server_tracks"`  // Static config for server tracks
+	ListenAddress      string                       `json:"listen_address"`       // Defaults to :8080
+	DB                 string                       `json:"db"`                   // For database connections
+	SitePrefix         string                       `json:"site_prefix"`          // URL prefix, e.g. "/api"
+	Debug              bool                         `json:"debug"`                // Enables trace-debugging
+	ServerTracks       map[string]ServerTrackConfig `json:"server_tracks"`        // Static config for server tracks
+	OAuth2ClientID     string                       `json:"oauth2_client_id"`     // OAuth2 Client ID
+	OAuth2ClientSecret string                       `json:"oauth2_client_secret"` // OAuth2 Client Secret
+	OAuth2AuthorizeURL string                       `json:"oauth2_authorize_url"` // OAuth2 authorize URL
+	OAuth2TokenURL     string                       `json:"oauth2_token_url"`     // OAuth2 token URL
+	OAuth2RedirectURL  string                       `json:"oauth2_redirect_url"`  // OAuth2 redirect URL
 }
 
 // ServerTrackConfig contains the static config for a single server track.

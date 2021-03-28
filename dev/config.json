@@ -10,5 +10,10 @@
 			"auth_password": "TODO",
 			"max_instances": 10
 		}
-	}
+	},
+	"oauth2_client_id": "TODO",
+	"oauth2_client_secret": "TODO",
+	"oauth2_authorize_url": "TODO",
+	"oauth2_token_url": "TODO",
+	"oauth2_redirect_url": "TODO"
 }
