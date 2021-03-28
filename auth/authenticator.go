@@ -44,19 +44,23 @@ func (authenticator OAuth2Authenticator) ServeHTTP(writer http.ResponseWriter, r
 
 	code := request.URL.Query().Get("code")
 	if code == "" {
+		log.Tracef("No authorization code provided, redirecting to IdP.")
 		http.Redirect(writer, request, authenticator.config.AuthCodeURL(""), 303)
 		return
 	}
 
+	log.Tracef("Authorization code provided, exchanging it with IdP for token internally.")
 	token, err := authenticator.config.Exchange(context.Background(), code)
 	if err != nil {
-		writer.Write([]byte("Failed to exchange token"))
+		// TODO JSON error message
+		writer.Write([]byte("Failed to exchange authorization code for token. Invalid code?"))
 		writer.WriteHeader(400)
 		return
 	}
 	accessToken := token.AccessToken
 
-	// TODO
+	// TODO fetch profile and update local profile
+	// TODO create session key to give to back to client
 	log.Tracef("Got access token: %v", token.AccessToken)
 	authenticator.demo(accessToken)
 }
@@ -84,6 +88,7 @@ func (authenticator *OAuth2Authenticator) demo(accessToken string) error {
 		return responseBodyErr
 	}
 
+	// TODO demo
 	log.Tracef("OAuth2 profile data (demo): %v", string(responseBody))
 
 	return nil

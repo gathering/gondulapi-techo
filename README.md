@@ -4,8 +4,6 @@ A temporary gondulapi fork for Tech:Online.
 
 Note that it still uses the module name `github.com/gathering/gondulapi` even though this repo is called `gondulapi-techo`.
 
-(Forgive me for _temporarily_ converting the README to Md.)
-
 ## Description
 
 This is the API engine that will be used for the Gondul backend in the
@@ -62,7 +60,6 @@ update fields that are actually provided (if that is possible to detect!).
 ## TODO
 
 - **Participant scheduling.**
-- Fix the copyright notice in some source files for stuff Kristian didn't write.
 - DB ordering and limiting.
 - Brief listing (query option to hide details when listing many elements).
 - Consistency between objects? Use foreign keys instead of string references for something that may or may not exist.
