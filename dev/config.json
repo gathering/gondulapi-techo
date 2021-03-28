@@ -1,6 +1,14 @@
 {
-	"listenaddress": ":8080",
-	"connectionstring": "host=db user=gondulapi password=lolkek dbname=gondulapi sslmode=disable",
+	"listen_address": ":8080",
+	"db": "host=db user=gondulapi password=lolkek dbname=gondulapi sslmode=disable",
 	"debug": true,
-	"prefix": "/api"
+	"site_prefix": "/api",
+	"server_tracks": {
+		"server1": {
+			"base_url": "http://TODO",
+			"auth_username": "TODO",
+			"auth_password": "TODO",
+			"max_instances": 10
+		}
+	}
 }

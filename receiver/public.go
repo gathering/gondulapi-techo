@@ -98,14 +98,14 @@ func Start() {
 
 	if receiverSets != nil {
 		for _, set := range receiverSets {
-			serveMux.Handle(gapi.Config.Prefix+set.pathPrefix, set)
+			serveMux.Handle(gapi.Config.SitePrefix+set.pathPrefix, set)
 			for _, receiver := range set.receivers {
-				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.Prefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
+				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.SitePrefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
 			}
 		}
 	}
 
 	log.WithField("listen_address", server.Addr).Info()
-	log.WithField("path_prefix", gapi.Config.Prefix).Info()
+	log.WithField("path_prefix", gapi.Config.SitePrefix).Info()
 	log.Fatal(server.ListenAndServe())
 }

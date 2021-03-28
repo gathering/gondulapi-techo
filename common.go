@@ -54,30 +54,37 @@ import "fmt"
 type Request struct {
 	PathArgs  map[string]string
 	QueryArgs map[string]string
-	ListLimit int  // How many elements to return in listings
-	ListBrief bool // If only the most relevant fields should be included listings
+	ListLimit int  // How many elements to return in listings (convenience)
+	ListBrief bool // If only the most relevant fields should be included listings (convenience)
 }
 
-// WriteReport is an update report on write-requests. The precise meaning might
+// Result is an update report on write-requests. The precise meaning might
 // vary, but the gist should be the same.
-type WriteReport struct {
+type Result struct {
 	Affected int
 	Ok       int
 	Failed   int
-	Error    error `json:",omitempty"`
-	Code     int   `json:"-"`
+	Message  string `json:",omitempty"` // Message for client
+	Code     int    `json:"-"`          // HTTP status
+	Location string `json:"-"`          // For redirecting if 3XX status code
+	Error    error  `json:"-"`          // Internal error, forces code 500
+}
+
+// HasErrorOrCode returns true if it contains an error or the status code has been set (not 0).
+func (result *Result) HasErrorOrCode() bool {
+	return result.Error != nil || result.Code != 0
 }
 
 // Getter implements Get method, which should fetch the object represented
 // by the element path.
 type Getter interface {
-	Get(request *Request) error
+	Get(request *Request) Result
 }
 
 // Putter is an idempotent method that requires an absolute path. It should
 // (over-)write the object found at the element path.
 type Putter interface {
-	Put(request *Request) (WriteReport, error)
+	Put(request *Request) Result
 }
 
 // Poster is not necessarily idempotent, but can be. It should write the
@@ -85,14 +92,14 @@ type Putter interface {
 // provided in the data structure itself.
 // Post should ignore the request element.
 type Poster interface {
-	Post(request *Request) (WriteReport, error)
+	Post(request *Request) Result
 }
 
 // Deleter should delete the object identified by the element. It should be
 // idempotent, in that it should be safe to call it on already-deleted
 // items.
 type Deleter interface {
-	Delete(request *Request) (WriteReport, error)
+	Delete(request *Request) Result
 }
 
 // Errorf is a convenience-function to provide an Error data structure,

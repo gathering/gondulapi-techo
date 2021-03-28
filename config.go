@@ -29,10 +29,19 @@ import (
 // Config covers global configuration, and if need be it will provide
 // mechanisms for local overrides (similar to Skogul).
 var Config struct {
-	ListenAddress    string // Defaults to :8080
-	ConnectionString string // For database connections
-	Prefix           string // URL prefix, e.g. "/api".
-	Debug            bool   // Enables trace-debugging
+	ListenAddress string                       `json:"listen_address"` // Defaults to :8080
+	DB            string                       `json:"db"`             // For database connections
+	SitePrefix    string                       `json:"site_prefix"`    // URL prefix, e.g. "/api"
+	Debug         bool                         `json:"debug"`          // Enables trace-debugging
+	ServerTracks  map[string]ServerTrackConfig `json:"server_tracks"`  // Static config for server tracks
+}
+
+// ServerTrackConfig contains the static config for a single server track.
+type ServerTrackConfig struct {
+	BaseURL      string `json:"base_url"`
+	MaxInstances int    `json:"max_instances"`
+	AuthUsername string `json:"auth_username"`
+	AuthPassword string `json:"auth_password"`
 }
 
 // ParseConfig reads a file and parses it as JSON, assuming it will be a

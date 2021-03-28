@@ -44,6 +44,7 @@ update fields that are actually provided (if that is possible to detect!).
 
 ### Setup with Docker Compose
 
+1. (First time) Create local config: `cp dev/config.json dev/config.local.json`
 1. (First time) Start the DB (detatched): `docker-compose -f dev/docker-compose.yml up -d db`
 1. (First time) Apply schema to DB: `dev/prepare-db.sh`
 1. Build and start everything: `docker-compose -f dev/docker-compose.yml up --build [-d]`
@@ -58,18 +59,9 @@ update fields that are actually provided (if that is possible to detect!).
 
 - This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
 
-## Changes
-
-- Merge the slightly outdated Tech:Online version into the slightly updated mainline Gondul API version.
-- The handlers unrelated to Tech:O were removed as I can't be bothered updating them.
-- The query args are forwarded to handlers (e.g. to facilitate limiting and filtering).
-- Added limit input for limiting the number of returned objects.
-- Fixed content type.
-- Fixed method-not-supported status code.
-- Add regex path suffix to handlers to more easily capture path values.
-
 ## TODO
 
+- **Participant scheduling.**
 - Fix the copyright notice in some source files for stuff Kristian didn't write.
 - DB ordering and limiting.
 - Brief listing (query option to hide details when listing many elements).

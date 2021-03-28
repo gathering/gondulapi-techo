@@ -113,8 +113,8 @@ func enumerate(haystacks map[string]bool, populate bool, d interface{}) (keyvals
 // Update attempts to update the object in the database, using the provided
 // string and matching the haystack with the needle. It skips fields that
 // are nil-pointers.
-func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.WriteReport, error) {
-	report := gondulapi.WriteReport{}
+func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Result, error) {
+	report := gondulapi.Result{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++
@@ -139,7 +139,7 @@ func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Wri
 		last = idx
 	}
 	strsearch, searcharr := buildWhere(last+1, search)
-	lead = fmt.Sprintf("%s WHERE %s", lead, strsearch)
+	lead = fmt.Sprintf("%s%s", lead, strsearch)
 	for _, item := range searcharr {
 		kvs.values = append(kvs.values, item)
 	}
@@ -161,8 +161,8 @@ func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Wri
 // if an object already exists, so it will happily make duplicates -
 // your database schema should prevent that, and calling code should
 // check if that is not the desired behavior.
-func Insert(table string, d interface{}) (gondulapi.WriteReport, error) {
-	report := gondulapi.WriteReport{}
+func Insert(table string, d interface{}) (gondulapi.Result, error) {
+	report := gondulapi.Result{}
 	haystacks := make(map[string]bool, 0)
 	kvs, err := enumerate(haystacks, false, d)
 	if err != nil {
@@ -203,10 +203,10 @@ func Insert(table string, d interface{}) (gondulapi.WriteReport, error) {
 // still attempt an UPDATE, which will fail silently (for now). This can be
 // handled by a front-end doing a double-check, or by just assuming it
 // doesn't happen often enough to be worth fixing.
-func Upsert(table string, d interface{}, searcher ...interface{}) (gondulapi.WriteReport, error) {
+func Upsert(table string, d interface{}, searcher ...interface{}) (gondulapi.Result, error) {
 	found, err := Exists(table, searcher...)
 	if err != nil {
-		return gondulapi.WriteReport{Failed: 1}, gondulapi.InternalError
+		return gondulapi.Result{Failed: 1}, gondulapi.InternalError
 	}
 	if found {
 		return Update(table, d, searcher...)
@@ -215,15 +215,15 @@ func Upsert(table string, d interface{}, searcher ...interface{}) (gondulapi.Wri
 }
 
 // Delete will delete the element, and will also delete duplicates.
-func Delete(table string, searcher ...interface{}) (gondulapi.WriteReport, error) {
-	report := gondulapi.WriteReport{}
+func Delete(table string, searcher ...interface{}) (gondulapi.Result, error) {
+	report := gondulapi.Result{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++
 		return report, err
 	}
 	strsearch, searcharr := buildWhere(0, search)
-	q := fmt.Sprintf("DELETE FROM %s WHERE %s", table, strsearch)
+	q := fmt.Sprintf("DELETE FROM %s%s", table, strsearch)
 	res, err := DB.Exec(q, searcharr...)
 	if err != nil {
 		report.Failed++

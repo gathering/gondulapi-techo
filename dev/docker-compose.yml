@@ -8,7 +8,7 @@ services:
     environment:
       - TZ=Europe/Oslo
     volumes:
-      - ./config.json:/app/config.json:ro
+      - ./config.local.json:/app/config.json:ro
     ports:
       - 127.0.0.1:8080:8080/tcp
     depends_on: [db]

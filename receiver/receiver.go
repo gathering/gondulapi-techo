@@ -62,6 +62,7 @@ type input struct {
 type output struct {
 	code         int
 	data         interface{}
+	location     string
 	cachecontrol string
 }
 
@@ -105,7 +106,7 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 	}
 	input.url = request.URL
 	input.pathPrefix = pathPrefix
-	input.pathSuffix = fullPath[len(gondulapi.Config.Prefix+pathPrefix):]
+	input.pathSuffix = fullPath[len(gondulapi.Config.SitePrefix+pathPrefix):]
 	input.query = request.URL.Query()
 	input.method = request.Method
 
@@ -131,41 +132,51 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 // interface and calls the relevant function, if any, for that data. For
 // PUT and POST it also parses the input data.
 func handleRequest(receiver *receiver, input input) (output output) {
-	output.code = 200
-	var report gondulapi.WriteReport
-	var err error
+	var result gondulapi.Result
 
+	// Handle handler handling
 	defer func() {
-		log.WithFields(log.Fields{
-			"output.code": output.code,
-			"output.data": output.data,
-			"error":       err,
-		}).Trace("Request handled")
-		gerr, havegerr := err.(gondulapi.Error)
-		if err != nil && report.Error == nil {
-			report.Error = err
-		}
+		// log.WithFields(log.Fields{
+		// 	"default-code":         output.code,
+		// 	"default-data":         output.data,
+		// 	"default-location":     output.data,
+		// 	"default-cachecontrol": output.cachecontrol,
+		// 	"result-code":          result.Code,
+		// 	"result-message":       result.Message,
+		// 	"result-location":      result.Location,
+		// 	"result-error":         result.Error,
+		// }).Trace("Finished handling request")
 
-		if report.Code != 0 {
-			output.code = report.Code
-		} else if havegerr {
-			log.Tracef("During REST defered reply, we got a gondulapi.Error: %v", gerr)
-			output.code = gerr.Code
-		} else if report.Error != nil {
+		if result.Error != nil {
+			// Internal server error, ignore everything else
+			log.WithError(result.Error).Warn("internal server error")
 			output.code = 500
+			output.data = message("internal server error")
+			return
 		}
 
-		if output.data == nil && output.code != 204 {
-			output.data = report
+		// Override default code if handles provided one
+		if result.Code != 0 {
+			output.code = result.Code
+		}
+
+		if output.code >= 300 && output.code <= 399 {
+			// Redirect
+			output.location = result.Location
+		} else if output.data == nil && output.code != 204 {
+			// No internal error, data, redirect or 204 (no content): might as well show report
+			output.data = result
 		}
 	}()
 
+	// No handler
 	if receiver == nil {
 		output.code = 404
-		output.data = message("not found")
+		output.data = message("handler not found")
 		return
 	}
 
+	// Prepare request object
 	var request gondulapi.Request
 	request.PathArgs = make(map[string]string)
 	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
@@ -195,48 +206,27 @@ func handleRequest(receiver *receiver, input input) (output output) {
 		request.ListBrief = true
 	}
 
+	// Find handler and handle
 	item := receiver.allocator()
 	switch input.method {
 	case "GET":
+		output.code = 200
 		get, ok := item.(gondulapi.Getter)
 		if !ok {
 			output.code = 405
 			output.data = message("method not allowed")
 			return
 		}
-		err = get.Get(&request)
-		if err != nil {
-			return
-		}
+		result = get.Get(&request)
 		output.data = get
-	case "PUT":
-		if err := json.Unmarshal(input.data, &item); err != nil {
-			output.code = 400
-			output.data = message("malformed data")
-			return
-		}
-		put, ok := item.(gondulapi.Putter)
-		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
-			return
-		}
-		report, err = put.Put(&request)
-		output.data = report
-	case "DELETE":
-		del, ok := item.(gondulapi.Deleter)
-		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
-			return
-		}
-		report, err = del.Delete(&request)
-		output.data = report
 	case "POST":
-		if err := json.Unmarshal(input.data, &item); err != nil {
-			output.code = 400
-			output.data = message("malformed data")
-			return
+		output.code = 200
+		if len(input.data) > 0 {
+			if err := json.Unmarshal(input.data, &item); err != nil {
+				output.code = 400
+				output.data = message("malformed data")
+				return
+			}
 		}
 		post, ok := item.(gondulapi.Poster)
 		if !ok {
@@ -244,13 +234,37 @@ func handleRequest(receiver *receiver, input input) (output output) {
 			output.data = message("method not allowed")
 			return
 		}
-		report, err = post.Post(&request)
-		output.data = report
+		result = post.Post(&request)
+	case "PUT":
+		output.code = 200
+		if len(input.data) > 0 {
+			if err := json.Unmarshal(input.data, &item); err != nil {
+				output.code = 400
+				output.data = message("malformed data")
+				return
+			}
+		}
+		put, ok := item.(gondulapi.Putter)
+		if !ok {
+			output.code = 405
+			output.data = message("method not allowed")
+			return
+		}
+		result = put.Put(&request)
+	case "DELETE":
+		output.code = 200
+		del, ok := item.(gondulapi.Deleter)
+		if !ok {
+			output.code = 405
+			output.data = message("method not allowed")
+			return
+		}
+		result = del.Delete(&request)
 	default:
 		output.code = 405
 		output.data = message("method not allowed")
-		return
 	}
+
 	return
 }
 
@@ -268,6 +282,7 @@ func message(str string, v ...interface{}) (m struct {
 func answerRequest(w http.ResponseWriter, input input, output output) {
 	code := output.code
 
+	// Serialize output data as JSON
 	var b []byte
 	var jsonErr error
 	if input.pretty {
@@ -280,13 +295,19 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 		b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
 		code = 500
 	}
-
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+	// Caching header
 	etagraw := sha256.Sum256(b)
 	etagstr := hex.EncodeToString(etagraw[:])
 	w.Header().Set("ETag", etagstr)
 
+	// Redirect
+	if code >= 300 && code <= 399 {
+		w.Header().Set("Location", output.location)
+	}
+
+	// Finalize head and add body
 	w.WriteHeader(code)
 	if code != 204 {
 		fmt.Fprintf(w, "%s\n", b)

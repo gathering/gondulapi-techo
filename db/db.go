@@ -60,12 +60,12 @@ func Connect() error {
 		return Ping()
 	}
 
-	if gapi.Config.ConnectionString == "" {
+	if gapi.Config.DB == "" {
 		// TODO
 		log.Warn("Using default connection string for debug purposes. Relax, it's a very secure set of credentials.")
-		gapi.Config.ConnectionString = "user=kly password=lolkek dbname=klytest sslmode=disable"
+		gapi.Config.DB = "user=kly password=lolkek dbname=klytest sslmode=disable"
 	}
-	DB, err = sql.Open("postgres", gapi.Config.ConnectionString)
+	DB, err = sql.Open("postgres", gapi.Config.DB)
 	if err != nil {
 		log.Warnf("Failed to connect to database: %v", err)
 		return gapi.Error{500, "Failed to connect to database"}

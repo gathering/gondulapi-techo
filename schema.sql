@@ -134,11 +134,7 @@ CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents 
 -- Tracks table
 CREATE TABLE public.tracks (
     id text NOT NULL UNIQUE,
-    type text NOT NULL,
-    station_permanent boolean NOT NULL,
-    station_create_url text NOT NULL,
-    station_destroy_url text NOT NULL,
-    station_count_max int NOT NULL
+    type text NOT NULL
 );
 CREATE UNIQUE INDEX public_tracks_id_index ON public.tracks (id);
 
@@ -159,6 +155,7 @@ CREATE TABLE public.stations (
     id text NOT NULL UNIQUE,
     track text NOT NULL,
     shortname text NOT NULL,
+    name text NOT NULL,
     status text NOT NULL,
     credentials text NOT NULL,
     notes text NOT NULL,

@@ -19,17 +19,19 @@
 - `/document-families/`: Get address families.
 - `/document-family/`: Get/post/put/delete an document family.
 - `/documents/[?family=<>][&shortname=<>]`: Get documents.
-- `/document/<id>`: Get/post/put/delete a document.
+- `/document/[id]`: Get/post/put/delete a document.
 
 ## Tracks
 
 - `/tracks/[?type=<>]`: Get tracks.
-- `/track/<id>`: Get/post/put/delete a track.
+- `/track/[id]`: Get/post/put/delete a track.
+- `/track/<id>/new-station`: Post to manually allocate a dynamically allocated station (server track).
 
 ## Stations
 
 - `/stations/[?track=<>][&shortname=<>][&status=<>]`: Get stations.
-- `/station/<id>`: Get/post/put/delete a station.
+- `/station/[id]`: Get/post/put/delete a station.
+- `/station/<id>/destroy`: Post to manually destroy a dynamically allocated station (server track).
 
 ## Timeslots
 
@@ -39,9 +41,9 @@
 ## Tasks
 
 - `/tasks/[?track=<>][&shortname=<>]`: Get tasks.
-- `/task/<id>`: Get/post/put/delete a task.
+- `/task/[id]`: Get/post/put/delete a task.
 
 ## Tests
 
 - `/tests/[?track=<>][&task_shortname=<>][&shortname=<>][&station_shortname=<>][&timeslot=<>][&latest]`: Get/post tests.
-- `/test/<ID>`: Get/post a test.
+- `/test/[id]`: Get/post a test.
