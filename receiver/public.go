@@ -1,6 +1,7 @@
 /*
 Gondul GO API, http receiver code
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -96,11 +97,14 @@ func Start() {
 	}
 	server.Addr = gapi.Config.ListenAddress
 
+	// serveMux.Handle(gapi.Config.SitePrefix+"/auth/", auth.Handler)
+	// log.Infof("Added auth handler.")
+
 	if receiverSets != nil {
 		for _, set := range receiverSets {
 			serveMux.Handle(gapi.Config.SitePrefix+set.pathPrefix, set)
 			for _, receiver := range set.receivers {
-				log.Printf("Added receiver %v[%v][%v]' for [%T].", gapi.Config.SitePrefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
+				log.Infof("Added receiver %v[%v][%v]' for [%T].", gapi.Config.SitePrefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
 			}
 		}
 	}

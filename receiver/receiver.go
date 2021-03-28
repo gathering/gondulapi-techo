@@ -1,6 +1,7 @@
 /*
 Gondul GO API, http receiver code
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

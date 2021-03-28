@@ -1,6 +1,7 @@
 /*
 Tech:Online backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -74,16 +75,16 @@ type StationDestroyRequest struct {
 }
 
 type serverCreateStationResponse struct {
-	ID            int    `json:"id"`
-	EntryType     int    `json:"entry_type"`
-	Username      string `json:"username"`
-	VMID          string `json:"orc_vm_id"`
-	VMUsername    string `json:"orc_vm_username"`
-	VMPassword    string `json:"orc_vm_password"`
-	VMFQDN        string `json:"orc_vm_fqdn"`
-	VMIPv4Address string `json:"public_ipv4"`
-	VMIPv6Address string `json:"public_ipv6"`
-	VMSSHPort     string `json:"-"` // TODO
+	ID             int    `json:"id"`
+	FQDN           string `json:"fqdn"`
+	Zone           string `json:"zone"`
+	Username       string `json:"orc_vm_username"`
+	Password       string `json:"orc_vm_password"`
+	IPv4Address    string `json:"public_ipv4"`
+	IPv6Address    string `json:"public_ipv6"`
+	SSHPort        int    `json:"ssh_port"`
+	VLANID         int    `json:"vlan_id"`
+	VLANIPv4Subnet string `json:"vlan_ip"`
 }
 
 func init() {
@@ -339,12 +340,12 @@ func (createRequest *StationCreateRequest) Post(request *gondulapi.Request) gond
 	station.ID = &newID
 	station.TrackID = trackID
 	station.Shortname = strconv.Itoa(serviceData.ID)
-	station.Name = serviceData.VMFQDN
-	station.Credentials = fmt.Sprintf("ssh %v@%v -p %v\nssh %v@%v -p %v\nPassword: %v",
-		serviceData.VMUsername, serviceData.VMIPv4Address, serviceData.VMSSHPort,
-		serviceData.VMUsername, serviceData.VMIPv6Address, serviceData.VMSSHPort,
-		serviceData.VMPassword)
+	station.Name = serviceData.FQDN
 	station.Status = stationStatusPreparing
+	station.Credentials = fmt.Sprintf("Username: %v\nPassword: %v\nPublic IPv4 address: %v\nPublic IPv6 address: %v\nSSH port: %v",
+		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
+	station.Notes = fmt.Sprintf("FQDN: %v\nZone: %v\nVLAN ID: %v\nVLAN IPv4 Subnet: %v",
+		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}
@@ -388,9 +389,6 @@ func (createRequest *StationCreateRequest) callService(trackConfig gondulapi.Ser
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
 		return nil, err
 	}
-
-	// TODO read SSH port from response when added
-	responseData.VMSSHPort = "TODO"
 
 	log.Tracef("VM service created new instance: %v", responseData.ID)
 
@@ -445,8 +443,8 @@ func (destroyRequest *StationDestroyRequest) Post(request *gondulapi.Request) go
 }
 
 func (destroyRequest *StationDestroyRequest) callService(station *Station, trackConfig gondulapi.ServerTrackConfig) error {
-	destroyURL := fmt.Sprintf("%v/%v/delete", trackConfig.BaseURL, station.Shortname)
-	request, requestErr := http.NewRequest("GET", destroyURL, nil)
+	destroyURL := fmt.Sprintf("%v/api/entry/%v", trackConfig.BaseURL, station.Shortname)
+	request, requestErr := http.NewRequest("DELETE", destroyURL, nil)
 	if requestErr != nil {
 		return requestErr
 	}
