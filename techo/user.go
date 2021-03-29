@@ -24,38 +24,34 @@ import (
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
 	"github.com/gathering/gondulapi/receiver"
-	"github.com/google/uuid"
 )
-
-/*
- * TODO:
- * - Authorize access to sensitive info.
- */
 
 // User reperesent a single user, including registry
 // information. This is retrieved from the frontend, so where it comes from
 // is somewhat irrelevant.
 type User struct {
-	ID           *uuid.UUID `column:"id" json:"id"`                       // Generated, required, unique
-	UserName     string     `column:"user_name" json:"user_name"`         // Required, unique
-	EmailAddress string     `column:"email_address" json:"email_address"` // Required
-	FirstName    string     `column:"first_name" json:"first_name"`       // Required
-	LastName     string     `column:"last_name" json:"last_name"`         // Required
+	Token        string `column:"token" json:"token"`                 // Required, unique, secret
+	Username     string `column:"username" json:"username"`           // Required, unique
+	DisplayName  string `column:"display_name" json:"display_name"`   // Required
+	EmailAddress string `column:"email_address" json:"email_address"` // Required
 }
 
 // Users is a list of users.
 type Users []*User
 
+// UsersForAdmins is a list of users and only accessible for admins.
+type UsersForAdmins Users
+
 func init() {
-	receiver.AddHandler("/users/", "^$", func() interface{} { return &Users{} })
-	receiver.AddHandler("/user/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &User{} })
+	receiver.AddHandler("/admin/users/", "^$", func() interface{} { return &UsersForAdmins{} }) // Admin
+	receiver.AddHandler("/user/", "^(?:(?P<token>[^/]+)/)?$", func() interface{} { return &User{} })
 }
 
 // Get gets multiple users.
-func (users *Users) Get(request *gondulapi.Request) gondulapi.Result {
+func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
 	var whereArgs []interface{}
-	if userName, ok := request.QueryArgs["user_name"]; ok {
-		whereArgs = append(whereArgs, "user_name", "=", userName)
+	if username, ok := request.QueryArgs["token"]; ok {
+		whereArgs = append(whereArgs, "username", "=", username)
 	}
 
 	selectErr := db.SelectMany(users, "users", whereArgs...)
@@ -67,87 +63,86 @@ func (users *Users) Get(request *gondulapi.Request) gondulapi.Result {
 }
 
 // Get gets a single user.
-func (user *User) Get(request *gondulapi.Request) gondulapi.Result {
-	id, idExists := request.PathArgs["id"]
-	if !idExists {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
-	}
+// Disallow for now.
+// func (user *User) Get(request *gondulapi.Request) gondulapi.Result {
+// 	token, tokenExists := request.PathArgs["token"]
+// 	if !tokenExists {
+// 		return gondulapi.Result{Code: 400, Message: "missing token"}
+// 	}
 
-	found, err := db.Select(user, "users", "id", "=", id)
-	if err != nil {
-		return gondulapi.Result{Error: err}
-	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
-	}
+// 	found, err := db.Select(user, "users", "token", "=", token)
+// 	if err != nil {
+// 		return gondulapi.Result{Error: err}
+// 	}
+// 	if !found {
+// 		return gondulapi.Result{Code: 404, Message: "not found"}
+// 	}
 
-	return gondulapi.Result{}
-}
+// 	return gondulapi.Result{}
+// }
 
 // Post creates a new user.
-func (user *User) Post(request *gondulapi.Request) gondulapi.Result {
-	if user.ID == nil {
-		newID := uuid.New()
-		user.ID = &newID
-	}
-	if result := user.validate(); result.HasErrorOrCode() {
-		return result
-	}
+// Disallow for now.
+// func (user *User) Post(request *gondulapi.Request) gondulapi.Result {
+// 	if result := user.validate(); result.HasErrorOrCode() {
+// 		return result
+// 	}
 
-	if exists, err := user.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	}
+// 	if exists, err := user.exists(); err != nil {
+// 		return gondulapi.Result{Failed: 1, Error: err}
+// 	} else if exists {
+// 		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate token"}
+// 	}
 
-	return user.create()
-}
+// 	return user.create()
+// }
 
 // Put updates a user.
 func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
-	rawID, idExists := request.PathArgs["id"]
-	if !idExists {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
-	}
-	id, uuidErr := uuid.Parse(rawID)
-	if uuidErr != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+	token, tokenExists := request.PathArgs["token"]
+	if !tokenExists {
+		return gondulapi.Result{Code: 400, Message: "missing token"}
 	}
 
-	if *user.ID != id {
+	if user.Token != token {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 	if result := user.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
-	return user.update()
-}
-
-// Delete deletes a user.
-func (user *User) Delete(request *gondulapi.Request) gondulapi.Result {
-	rawID, idExists := request.PathArgs["id"]
-	if !idExists {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
-	}
-	id, uuidErr := uuid.Parse(rawID)
-	if uuidErr != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "malformed UUID"}
-	}
-
-	user.ID = &id
+	// Create or update.
 	exists, existsErr := user.exists()
 	if existsErr != nil {
 		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
-	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	if exists {
+		return user.update()
 	}
-
-	result, err := db.Delete("users", "id", "=", user.ID)
-	result.Error = err
-	return result
+	return user.create()
 }
+
+// Delete deletes a user.
+// Disallow for now.
+// func (user *User) Delete(request *gondulapi.Request) gondulapi.Result {
+// 	token, tokenExists := request.PathArgs["token"]
+// 	if !tokenExists {
+// 		return gondulapi.Result{Code: 400, Message: "missing token"}
+// 	}
+
+// 	user.Token = token
+// 	exists, existsErr := user.exists()
+// 	if existsErr != nil {
+// 		return gondulapi.Result{Failed: 1, Error: existsErr}
+// 	}
+// 	if !exists {
+// 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+// 	}
+
+// 	result, err := db.Delete("users", "token", "=", user.Token)
+// 	result.Error = err
+// 	return result
+// }
 
 func (user *User) create() gondulapi.Result {
 	if exists, err := user.exists(); err != nil {
@@ -168,13 +163,13 @@ func (user *User) update() gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Update("users", user, "id", "=", user.ID)
+	result, err := db.Update("users", user, "token", "=", user.Token)
 	result.Error = err
 	return result
 }
 
 func (user *User) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM users WHERE id = $1", user.ID)
+	rows, err := db.DB.Query("SELECT token FROM users WHERE token = $1", user.Token)
 	if err != nil {
 		return false, err
 	}
@@ -188,27 +183,27 @@ func (user *User) exists() (bool, error) {
 
 func (user *User) validate() gondulapi.Result {
 	switch {
-	case user.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
-	case user.UserName == "":
+	case user.Token == "":
+		return gondulapi.Result{Code: 400, Message: "missing token"}
+	case user.Username == "":
 		return gondulapi.Result{Code: 400, Message: "missing username"}
+	case user.DisplayName == "":
+		return gondulapi.Result{Code: 400, Message: "missing display name"}
 	case user.EmailAddress == "":
 		return gondulapi.Result{Code: 400, Message: "missing email address"}
-	case user.FirstName == "" || user.LastName == "":
-		return gondulapi.Result{Code: 400, Message: "missing first or last name"}
 	}
 
-	if ok, err := user.checkUniqueFields(); err != nil {
+	if ok, err := user.checkUniqueUsername(); err != nil {
 		return gondulapi.Result{Error: err}
 	} else if !ok {
-		return gondulapi.Result{Code: 409, Message: "user_name already exists"}
+		return gondulapi.Result{Code: 409, Message: "username already exists"}
 	}
 
 	return gondulapi.Result{}
 }
 
-func (user *User) checkUniqueFields() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM users WHERE id != $1 AND user_name = $2", user.ID, user.UserName)
+func (user *User) checkUniqueUsername() (bool, error) {
+	rows, err := db.DB.Query("SELECT token FROM users WHERE token != $1 AND username = $2", user.Token, user.Username)
 	if err != nil {
 		return false, err
 	}

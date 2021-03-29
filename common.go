@@ -47,7 +47,9 @@ though, such as config file management and logging. Not very exotic.
 */
 package gondulapi
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Request contains the last part of the URL (without the handler prefix), certain query args,
 // and a limit on how many elements to get.

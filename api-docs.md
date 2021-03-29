@@ -3,47 +3,62 @@
 ## General
 
 - All endpoints support `?pretty` to pretty print the JSON.
-- All listing endpoints support `?limit=<n>` to limit the number of returned objects.
-- Some listing endpoints support `?brief` to hide less important fields, to make the dataset smaller when they're not needed.
-- Put may have patch semantics.
+- All listing endpoints support `?limit=<n>` to limit the number of returned objects (WIP).
+- Some listing endpoints support `?brief` to hide less important fields, to make the dataset smaller when they're not needed (WIP).
+- PUT may have PATCH semantics.
 
 ## Users
 
-**Warning**: Will probably change when AuthN/Z is implemented.
-
-- `/users/[?user_name=<>]`: Get users.
-- `/user/[id]`: Get/post/put/delete a user.
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/admin/users/[?username=<>][&token=<>]` | `GET` | Get users. | Admin. |
+| `/user/<token>` | `PUT` | Get/post/put/delete a user. | Public (write). |
 
 ## Documents
 
-- `/document-families/`: Get address families.
-- `/document-family/`: Get/post/put/delete an document family.
-- `/documents/[?family=<>][&shortname=<>]`: Get documents.
-- `/document/[id]`: Get/post/put/delete a document.
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/document-families/` | `GET` | Get address families. | Public. |
+| `/document-family/` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete an document family. | Public (read) and admin. |
+| `/documents/[?family=<>][&shortname=<>]` | `GET` | Get documents. | Public. |
+| `/document/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a document. | Public (read) and admin. |
 
 ## Tracks
 
-- `/tracks/[?type=<>]`: Get tracks.
-- `/track/[id]`: Get/post/put/delete a track.
-- `/track/<id>/new-station`: Post to manually allocate a dynamically allocated station (server track).
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/tracks/[?type=<>]` | `GET` | Get tracks. | Public. |
+| `/track/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a track. | Public (read) and admin. |
+| `/track/<id>/new-station` | `POST` | Manually allocate a station (server track). | Admin. |
 
 ## Stations
 
-- `/stations/[?track=<>][&shortname=<>][&status=<>]`: Get stations.
-- `/station/[id]`: Get/post/put/delete a station.
-- `/station/<id>/destroy`: Post to manually destroy a dynamically allocated station (server track).
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/stations/[?track=<>][&shortname=<>][&status=<>]` | `GET` | Get stations. | Public (read without credentials) and admin. |
+| `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
+| `/station/<id>/destroy` | `POST` | Manually destroy an allocated station (server track). | Admin. |
 
 ## Timeslots
 
-- `/timeslots/[?user=<>][&track=<>][&station_shortname=<>]`: Get timeslots.
-- `/timeslot/<id>`: Get/post/put/delete a timeslot.
+Timeslots are the participation objects for a user and a track. The start time, end time and station gets filled in later.
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>]` | `GET` | Get timeslots. | Admin. |
+| `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
+| `/timeslot/[id][?user-token=<>]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Public (secret user token). |
 
 ## Tasks
 
-- `/tasks/[?track=<>][&shortname=<>]`: Get tasks.
-- `/task/[id]`: Get/post/put/delete a task.
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/tasks/[?track=<>][&shortname=<>]` | `GET` | Get tasks. | Public. |
+| `/task/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a task. | Public (read) and admin. |
 
 ## Tests
 
-- `/tests/[?track=<>][&task_shortname=<>][&shortname=<>][&station_shortname=<>][&timeslot=<>][&latest]`: Get/post tests.
-- `/test/[id]`: Get/post a test.
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST` | Get/post tests. | Public (read) and admin. |
+| `/test/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post a test. | Public (read) and admin. |

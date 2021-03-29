@@ -60,13 +60,13 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
 	}
-	if taskShortname, ok := request.QueryArgs["task_shortname"]; ok {
+	if taskShortname, ok := request.QueryArgs["task-shortname"]; ok {
 		whereArgs = append(whereArgs, "task_shortname", "=", taskShortname)
 	}
 	if shortname, ok := request.QueryArgs["shortname"]; ok {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
 	}
-	if stationShortname, ok := request.QueryArgs["station_shortname"]; ok {
+	if stationShortname, ok := request.QueryArgs["station-shortname"]; ok {
 		whereArgs = append(whereArgs, "station_shortname", "=", stationShortname)
 	}
 	if timeslot, ok := request.QueryArgs["timeslot"]; ok {

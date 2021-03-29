@@ -110,6 +110,14 @@ func (track *Track) Put(request *gondulapi.Request) gondulapi.Result {
 		return result
 	}
 
+	exists, existsErr := track.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
+	}
+	if exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
+
 	return track.update()
 }
 

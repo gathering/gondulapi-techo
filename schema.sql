@@ -22,92 +22,15 @@ END;
 $$;
 ALTER FUNCTION public.upd_timestamp() OWNER TO gondulapi;
 
--- -- Docs table
--- CREATE TABLE public.docs (
---     family text,
---     shortname text,
---     sequence integer,
---     name text,
---     content text
--- );
--- ALTER TABLE public.docs OWNER TO gondulapi;
-
--- -- Results table
--- CREATE TABLE public.results (
---     track text,
---     station integer,
---     title text DEFAULT ''::text,
---     description text,
---     status text,
---     task text,
---     participant text,
---     hash text,
---     "time" timestamp with time zone DEFAULT now()
--- );
--- ALTER TABLE public.results OWNER TO gondulapi;
--- CREATE TRIGGER t_name BEFORE UPDATE ON public.results FOR EACH ROW EXECUTE PROCEDURE public.upd_timestamp();
-
--- -- Participants table
--- CREATE TABLE public.participants (
---     id text,
---     first_name text,
---     last_name text,
---     display_name text,
---     email_address text
--- );
--- ALTER TABLE public.participants OWNER TO gondulapi;
--- CREATE UNIQUE INDEX puniq ON public.participants USING btree (uuid);
-
--- -- Stations table
--- CREATE TABLE public.stations (
---     stationid integer NOT NULL,
---     jumphost text,
---     net inet,
---     password text NOT NULL,
---     participant text,
---     notes text
--- );
--- ALTER TABLE public.stations OWNER TO gondulapi;
-
--- -- Status table
--- CREATE TABLE public.status (
---     stationid integer,
---     title text,
---     description text,
---     status text,
---     task text,
---     participantid text
--- );
--- ALTER TABLE public.status OWNER TO gondulapi;
-
--- -- Tasks table
--- CREATE TABLE public.tasks (
---     sequence integer,
---     short_name text,
---     name text,
---     description text
--- );
--- ALTER TABLE public.tasks OWNER TO gondulapi;
-
--- -- Timeslots table
--- CREATE TABLE public.timeslots (
---     user text,
---     start timestamp with time zone,
---     end timestamp with time zone,
---     station_id integer
--- );
--- ALTER TABLE public.timeslots OWNER TO gondulapi;
-
 -- Users table
 CREATE TABLE public.users (
-    id text NOT NULL UNIQUE,
-    user_name text NOT NULL UNIQUE,
-    email_address text NOT NULL,
-    first_name text NOT NULL,
-    last_name text NOT NULL
+    token text NOT NULL UNIQUE,
+    username text NOT NULL UNIQUE,
+    display_name text NOT NULL,
+    email_address text NOT NULL
 );
-CREATE UNIQUE INDEX public_users_id_index ON public.users (id);
-CREATE UNIQUE INDEX public_users_user_name_index ON public.users (user_name);
+CREATE UNIQUE INDEX public_users_token_index ON public.users (token);
+CREATE UNIQUE INDEX public_users_username_index ON public.users (username);
 
 -- Document families table
 CREATE TABLE public.document_families (
@@ -166,7 +89,7 @@ CREATE UNIQUE INDEX public_stations_id_index ON public.stations (id);
 -- Timeslots table
 CREATE TABLE public.timeslots (
     id text NOT NULL UNIQUE,
-    user_id text NOT NULL,
+    user_token text NOT NULL,
     track text NOT NULL,
     station_shortname text NOT NULL,
     begin_time timestamp with time zone,

@@ -55,16 +55,14 @@ update fields that are actually provided (if that is possible to detect!).
 
 - Check linting errors: `golint ./...`
 
+## Authentication & Authorization
+
+- The authn/authz is handled by Varnish, in front if the backend.
+- Frontend users are authenticated (to themselved) using OAuth2 against IdP XXX.
+- Backend endpoints not prefixed with `/admin/` allow GET/HEAD without authn.
+- POST/PUT/DELETE to any endpoint and any method to endpoints prefixed `/admin/` _generally_ requires basic auth.
+- Frontend users are allowed to GET/POST/PUT/DELETE their own timeslot which is indexed by a _very secret_ token known only to the users' authenticated clients.
+
 ## Miscellanea
 
 - This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
-
-## TODO
-
-- **Participant scheduling.**
-- Fix the copyright notice in some source files for stuff Kristian didn't write.
-- DB ordering and limiting.
-- Brief listing (query option to hide details when listing many elements).
-- Consistency between objects? Use foreign keys instead of string references for something that may or may not exist.
-- Authentication (OpenID Connect, authorization code flow?). (Or Kristian's auth in the main repo.)
-- Authorization (hard coded).

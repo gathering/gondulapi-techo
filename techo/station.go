@@ -169,6 +169,15 @@ func (station *Station) Put(request *gondulapi.Request) gondulapi.Result {
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}
+
+	exists, existsErr := station.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
+	}
+	if exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
+
 	return station.update()
 }
 

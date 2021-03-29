@@ -137,17 +137,6 @@ func handleRequest(receiver *receiver, input input) (output output) {
 
 	// Handle handler handling
 	defer func() {
-		// log.WithFields(log.Fields{
-		// 	"default-code":         output.code,
-		// 	"default-data":         output.data,
-		// 	"default-location":     output.data,
-		// 	"default-cachecontrol": output.cachecontrol,
-		// 	"result-code":          result.Code,
-		// 	"result-message":       result.Message,
-		// 	"result-location":      result.Location,
-		// 	"result-error":         result.Error,
-		// }).Trace("Finished handling request")
-
 		if result.Error != nil {
 			// Internal server error, ignore everything else
 			log.WithError(result.Error).Warn("internal server error")
@@ -165,7 +154,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 			// Redirect
 			output.location = result.Location
 		} else if output.data == nil && output.code != 204 {
-			// No internal error, data, redirect or 204 (no content): might as well show report
+			// Output available, show report
 			output.data = result
 		}
 	}()
@@ -281,6 +270,19 @@ func message(str string, v ...interface{}) (m struct {
 // answer replies to a HTTP request with the provided output, optionally
 // formatting the output prettily. It also calculates an ETag.
 func answerRequest(w http.ResponseWriter, input input, output output) {
+	if output.code >= 200 && output.code <= 299 {
+		log.WithFields(log.Fields{
+			"code":     output.code,
+			"location": output.location,
+		}).Trace("Request done")
+	} else {
+		log.WithFields(log.Fields{
+			"code":     output.code,
+			"location": output.location,
+			"data":     output.data,
+		}).Trace("Request done")
+	}
+
 	code := output.code
 
 	// Serialize output data as JSON

@@ -97,9 +97,6 @@ func Start() {
 	}
 	server.Addr = gapi.Config.ListenAddress
 
-	// serveMux.Handle(gapi.Config.SitePrefix+"/auth/", auth.Handler)
-	// log.Infof("Added auth handler.")
-
 	if receiverSets != nil {
 		for _, set := range receiverSets {
 			serveMux.Handle(gapi.Config.SitePrefix+set.pathPrefix, set)

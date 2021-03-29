@@ -110,6 +110,14 @@ func (family *DocumentFamily) Put(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
+	exists, existsErr := family.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
+	}
+	if exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
+
 	return family.update()
 }
 
@@ -240,6 +248,14 @@ func (document *Document) Put(request *gondulapi.Request) gondulapi.Result {
 
 	if result := document.validate(); result.HasErrorOrCode() {
 		return result
+	}
+
+	exists, existsErr := document.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
+	}
+	if exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	return document.update()
