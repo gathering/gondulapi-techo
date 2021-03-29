@@ -178,7 +178,7 @@ func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 	if existsErr != nil {
 		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
-	if exists {
+	if !exists {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
