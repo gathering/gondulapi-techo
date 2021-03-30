@@ -32,8 +32,8 @@ curl -sSf $ENDPOINT_DOCUMENT --data '{"family": "reference", "shortname": "part3
 echo
 echo "Seeding tracks ..."
 ENDPOINT_TRACK="${ENDPOINT}track/"
-curl -sSf $ENDPOINT_TRACK --data '{"id": "net", "type": "net"}'
-curl -sSf $ENDPOINT_TRACK --data '{"id": "server", "type": "server"}'
+curl -sSf $ENDPOINT_TRACK --data '{"id": "net", "type": "net", "name": "Network"}'
+curl -sSf $ENDPOINT_TRACK --data '{"id": "server", "type": "server", "name:" "Server"}'
 
 # Tasks
 echo

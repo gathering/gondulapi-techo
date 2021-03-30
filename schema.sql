@@ -11,16 +11,16 @@ SET row_security = off;
 SET default_tablespace = '';
 SET default_with_oids = false;
 
--- Function to update timestamp (field "time")
-CREATE FUNCTION public.upd_timestamp() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    NEW.time = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$;
-ALTER FUNCTION public.upd_timestamp() OWNER TO gondulapi;
+-- -- Function to update timestamp (field "time")
+-- CREATE FUNCTION public.upd_timestamp() RETURNS trigger
+--     LANGUAGE plpgsql
+--     AS $$
+-- BEGIN
+--     NEW.time = CURRENT_TIMESTAMP;
+--     RETURN NEW;
+-- END;
+-- $$;
+-- ALTER FUNCTION public.upd_timestamp() OWNER TO gondulapi;
 
 -- Users table
 CREATE TABLE public.users (
@@ -57,7 +57,8 @@ CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents 
 -- Tracks table
 CREATE TABLE public.tracks (
     id text NOT NULL UNIQUE,
-    type text NOT NULL
+    type text NOT NULL,
+    name text
 );
 CREATE UNIQUE INDEX public_tracks_id_index ON public.tracks (id);
 
