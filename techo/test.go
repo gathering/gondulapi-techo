@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package techo
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gathering/gondulapi"
@@ -37,7 +38,7 @@ type Test struct {
 	TaskShortname     string     `column:"task_shortname" json:"task_shortname"`       // Required
 	Shortname         string     `column:"shortname" json:"shortname"`                 // Required
 	StationShortname  string     `column:"station_shortname" json:"station_shortname"` // Required
-	Timeslot          string     `column:"timeslot" json:"timeslot"`                   // Automatic, empty string (not NULL!) if no current timeslot
+	Timeslot          *uuid.UUID `column:"timeslot" json:"timeslot"`                   // Automatic, NULL if no current timeslot
 	Name              string     `column:"name" json:"name"`                           // Required
 	Description       string     `column:"description" json:"description"`
 	Sequence          *int       `column:"sequence" json:"sequence"`
@@ -72,14 +73,26 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 	if timeslot, ok := request.QueryArgs["timeslot"]; ok {
 		whereArgs = append(whereArgs, "timeslot", "=", timeslot)
 	}
+	// _, latestOk := request.QueryArgs["latest"]
 	if _, ok := request.QueryArgs["latest"]; ok {
-		whereArgs = append(whereArgs, "timeslot", "=", "")
+		whereArgs = append(whereArgs, "timeslot", "IS", nil)
 	}
 
 	selectErr := db.SelectMany(tests, "tests", whereArgs...)
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}
 	}
+
+	// TODO move to SQL query
+	// if latestOk {
+	// 	oldTests := *tests
+	// 	*tests = make(Tests, 0)
+	// 	for _, test := range oldTests {
+	// 		if test.Timeslot == nil {
+	// 			*tests = append(*tests, test)
+	// 		}
+	// 	}
+	// }
 
 	return gondulapi.Result{}
 }
@@ -106,7 +119,7 @@ func (tests *Tests) Post(request *gondulapi.Request) gondulapi.Result {
 // Get gets a single test.
 func (test *Test) Get(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	if !idExists || id == "" {
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	}
 
@@ -123,39 +136,47 @@ func (test *Test) Get(request *gondulapi.Request) gondulapi.Result {
 
 // Post creates a new test. Existing tests with the same track/task/test/station/timeslot will get overwritten.
 func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
-	// Overwrite UUID
+	// Overwrite certain fields
 	newID := uuid.New()
 	test.ID = &newID
+	test.Timeslot = nil
+	now := time.Now()
+	test.Timestamp = &now
 
-	timestamp := time.Now()
-	test.Timestamp = &timestamp
-
-	if result := test.validate(); result.HasErrorOrCode() {
+	if result := test.validate(true); result.HasErrorOrCode() {
 		return result
 	}
 
-	// For the astronomic chance of a UUID collision
-	if exists, err := test.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+	// Bind to the active timeslot, if any
+	var timeslot Timeslot
+	timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+		"track", "=", test.TrackID,
+		"station_shortname", "=", test.StationShortname,
+		"begin_time", "<=", now,
+		"end_time", ">=", now,
+	)
+	if timeslotErr != nil {
+		return gondulapi.Result{Error: timeslotErr}
+	}
+	if timeslotFound {
+		test.Timeslot = timeslot.ID
 	}
 
-	// Bind to the active timeslot, or NULL if none is active
-	// TODO
-	test.Timeslot = ""
-
 	// Delete old tests with and without timeslot
-	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot = '')", test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.Timeslot)
+	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot IS NULL)", test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.Timeslot)
 	if deleteErr != nil {
 		return gondulapi.Result{Error: deleteErr}
 	}
 
 	var totalResult gondulapi.Result
 
-	// Save copy for the timeslot
-	if test.Timeslot != "" {
-		result := test.create()
+	// Save clone without timeslot (to fetch latest and between timeslots)
+	if test.Timeslot != nil {
+		cloneTest := *test
+		cloneTest.Timeslot = nil
+		newCloneID := uuid.New()
+		cloneTest.ID = &newCloneID
+		result := cloneTest.create()
 		if result.HasErrorOrCode() {
 			return result
 		}
@@ -164,8 +185,7 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 		totalResult.Failed += result.Failed
 	}
 
-	// Save copy without timeslot (to fetch latest and between timeslots)
-	test.Timeslot = ""
+	// Save original (with timeslot of one was found)
 	result := test.create()
 	if result.HasErrorOrCode() {
 		return result
@@ -174,6 +194,8 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	totalResult.Ok += result.Ok
 	totalResult.Failed += result.Failed
 
+	totalResult.Code = 201
+	totalResult.Location = fmt.Sprintf("%v/test/%v", gondulapi.Config.SitePrefix, test.ID)
 	return totalResult
 }
 
@@ -202,19 +224,16 @@ func (test *Test) update() gondulapi.Result {
 }
 
 func (test *Test) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM tests WHERE id = $1", test.ID)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM tests WHERE id = $1", test.ID)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
-func (test *Test) validate() gondulapi.Result {
+func (test *Test) validate(new bool) gondulapi.Result {
 	switch {
 	case test.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -234,7 +253,14 @@ func (test *Test) validate() gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing timestamp"}
 	}
 
-	// Note: No need to check for duplicate /task/track/test/station since it will get overwritten
+	// Check if existence is as expected
+	if exists, err := test.exists(); err != nil {
+		return gondulapi.Result{Failed: 1, Error: err}
+	} else if new && exists {
+		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+	} else if !new && !exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
 
 	track := Track{ID: test.TrackID}
 	if exists, err := track.exists(); err != nil {
@@ -253,6 +279,14 @@ func (test *Test) validate() gondulapi.Result {
 		return gondulapi.Result{Error: err}
 	} else if !exists {
 		return gondulapi.Result{Code: 400, Message: "referenced station does not exist"}
+	}
+	if test.Timeslot != nil {
+		timeslot := Timeslot{ID: test.Timeslot}
+		if exists, err := timeslot.exists(); err != nil {
+			return gondulapi.Result{Error: err}
+		} else if !exists {
+			return gondulapi.Result{Code: 400, Message: "referenced timeslot does not exist"}
+		}
 	}
 
 	return gondulapi.Result{}

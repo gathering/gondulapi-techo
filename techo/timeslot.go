@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package techo
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gathering/gondulapi"
@@ -34,9 +35,9 @@ type Timeslot struct {
 	ID               *uuid.UUID `column:"id" json:"id"`                               // Generated, required, unique
 	UserToken        string     `column:"user_token" json:"user_token"`               // Required, secret
 	TrackID          string     `column:"track" json:"track"`                         // Required
-	StationShortname string     `column:"station_shortname" json:"station_shortname"` // May empty until station assigned
-	BeginTime        *time.Time `column:"begin_time" json:"begin_time"`               // TODO
-	EndTime          *time.Time `column:"end_time" json:"end_time"`                   // TODO
+	StationShortname string     `column:"station_shortname" json:"station_shortname"` // May be empty until assigned
+	BeginTime        *time.Time `column:"begin_time" json:"begin_time"`               // May be empty until assigned
+	EndTime          *time.Time `column:"end_time" json:"end_time"`                   // May be empty until assigned
 }
 
 // Timeslots is a list of timeslots.
@@ -53,6 +54,7 @@ func init() {
 
 // Get gets multiple timeslots.
 func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+	now := time.Now()
 	var whereArgs []interface{}
 	if userID, ok := request.QueryArgs["user-token"]; ok {
 		whereArgs = append(whereArgs, "user_token", "=", userID)
@@ -63,11 +65,25 @@ func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.R
 	if stationShortname, ok := request.QueryArgs["station-shortname"]; ok {
 		whereArgs = append(whereArgs, "station_shortname", "=", stationShortname)
 	}
-	// TODO time filtering
+	state, stateOK := request.QueryArgs["state"]
+	if stateOK && state == "active" {
+		whereArgs = append(whereArgs, "begin_time", "<=", now, "end_time", ">=", now)
+	}
 
 	selectErr := db.SelectMany(timeslots, "timeslots", whereArgs...)
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}
+	}
+
+	// Continue state filtering (hard to do earlier due to query builder using AND)
+	if state == "unassigned" {
+		oldTimeslots := *timeslots
+		*timeslots = make(TimeslotsForAdmins, 0)
+		for _, timeslot := range oldTimeslots {
+			if timeslot.BeginTime == nil || timeslot.EndTime == nil {
+				*timeslots = append(*timeslots, timeslot)
+			}
+		}
 	}
 
 	return gondulapi.Result{}
@@ -99,7 +115,7 @@ func (timeslots *Timeslots) Get(request *gondulapi.Request) gondulapi.Result {
 // Get gets a single timeslot.
 func (timeslot *Timeslot) Get(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	if !idExists || id == "" {
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	}
 
@@ -107,9 +123,6 @@ func (timeslot *Timeslot) Get(request *gondulapi.Request) gondulapi.Result {
 	userToken, userTokenOk := request.QueryArgs["user-token"]
 	if !userTokenOk {
 		return gondulapi.Result{Code: 400, Message: "missing user token"}
-	}
-	if timeslot.UserToken != userToken {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "incorrect user token"}
 	}
 
 	// Find.
@@ -135,24 +148,26 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 		newID := uuid.New()
 		timeslot.ID = &newID
 	}
-
-	// Validate
-	if result := timeslot.validate(); result.HasErrorOrCode() {
+	if result := timeslot.validate(true); result.HasErrorOrCode() {
 		return result
 	}
+
 	if exists, err := timeslot.exists(); err != nil {
 		return gondulapi.Result{Failed: 1, Error: err}
 	} else if exists {
 		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
 	}
 
-	return timeslot.create()
+	result := timeslot.create()
+	result.Code = 201
+	result.Location = fmt.Sprintf("%v/timeslot/%v", gondulapi.Config.SitePrefix, timeslot.ID)
+	return result
 }
 
 // Put updates a timeslot.
 func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	if !idExists || id == "" {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
@@ -166,10 +181,10 @@ func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	// Validate
-	if (*timeslot.ID).String() != id {
+	if timeslot.ID != nil && (*timeslot.ID).String() != id {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := timeslot.validate(); result.HasErrorOrCode() {
+	if result := timeslot.validate(false); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -197,7 +212,7 @@ func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 // Delete deletes a timeslot.
 func (timeslot *Timeslot) Delete(request *gondulapi.Request) gondulapi.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
-	if !rawIDExists {
+	if !rawIDExists || rawID == "" {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
@@ -263,32 +278,26 @@ func (timeslot *Timeslot) update() gondulapi.Result {
 }
 
 func (timeslot *Timeslot) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM timeslots WHERE id = $1", timeslot.ID)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id = $1", timeslot.ID)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
 func (timeslot *Timeslot) existsWithToken() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM timeslots WHERE id = $1 AND user_token = $2", timeslot.ID, timeslot.UserToken)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id = $1 AND user_token = $2", timeslot.ID, timeslot.UserToken)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
-func (timeslot *Timeslot) validate() gondulapi.Result {
+func (timeslot *Timeslot) validate(new bool) gondulapi.Result {
 	switch {
 	case timeslot.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -296,9 +305,20 @@ func (timeslot *Timeslot) validate() gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing user token"}
 	case timeslot.TrackID == "":
 		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+	case (timeslot.BeginTime == nil) != (timeslot.EndTime == nil):
+		return gondulapi.Result{Code: 400, Message: "only begin or end time set"}
+	case timeslot.BeginTime != nil && timeslot.EndTime != nil && timeslot.EndTime.Before(*timeslot.BeginTime):
+		return gondulapi.Result{Code: 400, Message: "cannot end before it begins"}
 	}
 
-	// TODO validate time etc.
+	// Check if existence is as expected
+	if exists, err := timeslot.exists(); err != nil {
+		return gondulapi.Result{Failed: 1, Error: err}
+	} else if new && exists {
+		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+	} else if !new && !exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
 
 	user := User{Token: timeslot.UserToken}
 	if exists, err := user.exists(); err != nil {
@@ -323,16 +343,17 @@ func (timeslot *Timeslot) validate() gondulapi.Result {
 
 	// TODO currently limited to single timeslot per user and track
 	// TODO should maybe allow signing up again if finished with previous ones
-	if ok, err := timeslot.checkAlreadyHasTimeslot(); err != nil {
+	if has, err := timeslot.hasTimeslot(); err != nil {
 		return gondulapi.Result{Error: err}
-	} else if !ok {
+	} else if has {
 		return gondulapi.Result{Code: 409, Message: "user currently has timeslot for this track"}
 	}
 
 	return gondulapi.Result{}
 }
 
-func (timeslot *Timeslot) checkAlreadyHasTimeslot() (bool, error) {
+func (timeslot *Timeslot) hasTimeslot() (bool, error) {
+	// TODO allow more timeslots per user and track
 	rows, err := db.DB.Query("SELECT id FROM timeslots WHERE id != $1 AND user_token = $2 AND track = $3", timeslot.ID, timeslot.UserToken, timeslot.TrackID)
 	if err != nil {
 		return false, err
@@ -342,5 +363,5 @@ func (timeslot *Timeslot) checkAlreadyHasTimeslot() (bool, error) {
 	}()
 
 	hasNext := rows.Next()
-	return !hasNext, nil
+	return hasNext, nil
 }

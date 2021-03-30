@@ -63,13 +63,13 @@ type Request struct {
 // Result is an update report on write-requests. The precise meaning might
 // vary, but the gist should be the same.
 type Result struct {
-	Affected int
-	Ok       int
-	Failed   int
-	Message  string `json:",omitempty"` // Message for client
-	Code     int    `json:"-"`          // HTTP status
-	Location string `json:"-"`          // For redirecting if 3XX status code
-	Error    error  `json:"-"`          // Internal error, forces code 500
+	Affected int    `json:"affected,omitempty"`
+	Ok       int    `json:"ok,omitempty"`
+	Failed   int    `json:"failed,omitempty"`
+	Message  string `json:"message,omitempty"` // Message for client
+	Code     int    `json:"-"`                 // HTTP status
+	Location string `json:"-"`                 // For redirecting if 3XX status code
+	Error    error  `json:"-"`                 // Internal error, forces code 500
 }
 
 // HasErrorOrCode returns true if it contains an error or the status code has been set (not 0).

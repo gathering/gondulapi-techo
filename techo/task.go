@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package techo
 
 import (
+	"fmt"
+
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
 	"github.com/gathering/gondulapi/receiver"
@@ -66,7 +68,7 @@ func (tasks *Tasks) Get(request *gondulapi.Request) gondulapi.Result {
 // Get gets a single task.
 func (task *Task) Get(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	if !idExists || id == "" {
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	}
 
@@ -87,41 +89,29 @@ func (task *Task) Post(request *gondulapi.Request) gondulapi.Result {
 		newID := uuid.New()
 		task.ID = &newID
 	}
-
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(true); result.HasErrorOrCode() {
 		return result
 	}
 
-	if exists, err := task.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	}
-
-	return task.create()
+	result := task.create()
+	result.Code = 201
+	result.Location = fmt.Sprintf("%v/task/%v", gondulapi.Config.SitePrefix, task.ID)
+	return result
 }
 
 // Put updates a task.
 func (task *Task) Put(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
-	if !idExists {
+	if !idExists || id == "" {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
-	if (*task.ID).String() != id {
+	if task.ID != nil && (*task.ID).String() != id {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(false); result.HasErrorOrCode() {
 		return result
-	}
-
-	exists, existsErr := task.exists()
-	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
-	}
-	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	return task.update()
@@ -130,7 +120,7 @@ func (task *Task) Put(request *gondulapi.Request) gondulapi.Result {
 // Delete deletes a task.
 func (task *Task) Delete(request *gondulapi.Request) gondulapi.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
-	if !rawIDExists {
+	if !rawIDExists || rawID == "" {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
@@ -177,32 +167,26 @@ func (task *Task) update() gondulapi.Result {
 }
 
 func (task *Task) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM tasks WHERE id = $1", task.ID)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM tasks WHERE id = $1", task.ID)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
 func (task *Task) existsShortname() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM tasks WHERE track = $1 AND shortname = $2", task.TrackID, task.Shortname)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM tasks WHERE track = $1 AND shortname = $2", task.TrackID, task.Shortname)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
-func (task *Task) validate() gondulapi.Result {
+func (task *Task) validate(new bool) gondulapi.Result {
 	switch {
 	case task.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -214,9 +198,18 @@ func (task *Task) validate() gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing name"}
 	}
 
-	if ok, err := task.checkUniqueFields(); err != nil {
+	// Check if existence is as expected
+	if exists, err := task.exists(); err != nil {
+		return gondulapi.Result{Failed: 1, Error: err}
+	} else if new && exists {
+		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+	} else if !new && !exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
+
+	if exists, err := task.existsTrackShortname(); err != nil {
 		return gondulapi.Result{Error: err}
-	} else if !ok {
+	} else if exists {
 		return gondulapi.Result{Code: 409, Message: "combination of track and shortname already exists"}
 	}
 
@@ -230,15 +223,12 @@ func (task *Task) validate() gondulapi.Result {
 	return gondulapi.Result{}
 }
 
-func (task *Task) checkUniqueFields() (bool, error) {
-	rows, err := db.DB.Query("SELECT id FROM tasks WHERE id != $1 AND track = $2 AND shortname = $3", task.ID, task.TrackID, task.Shortname)
-	if err != nil {
-		return false, err
+func (task *Task) existsTrackShortname() (bool, error) {
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM tasks WHERE id != $1 AND track = $2 AND shortname = $3", task.ID, task.TrackID, task.Shortname)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return !hasNext, nil
+	return count > 0, nil
 }

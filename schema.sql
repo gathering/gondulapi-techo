@@ -104,7 +104,7 @@ CREATE TABLE public.tests (
     task_shortname text NOT NULL,
     shortname text NOT NULL,
     station_shortname text NOT NULL,
-    timeslot text NOT NULL,
+    timeslot text,
     name text NOT NULL,
     description text NOT NULL,
     sequence int,

@@ -93,14 +93,21 @@ type Selector struct {
 func buildWhere(offset int, search []Selector) (string, []interface{}) {
 	strsearch := ""
 	searcharr := make([]interface{}, 0)
-	tmpand := ""
-	if len(search) > 0 {
-		strsearch = " WHERE "
-	}
-	for idx, item := range search {
-		strsearch = fmt.Sprintf("%s %s %s %s $%d", strsearch, tmpand, item.Haystack, item.Operator, offset+idx+1)
-		tmpand = " AND "
-		searcharr = append(searcharr, item.Needle)
+	nextidx := 1
+	for _, item := range search {
+		var whereand string
+		if strsearch == "" {
+			whereand = "WHERE"
+		} else {
+			whereand = "AND"
+		}
+		if item.Needle == nil {
+			strsearch = fmt.Sprintf("%s %s %s %s NULL", strsearch, whereand, item.Haystack, item.Operator)
+		} else {
+			strsearch = fmt.Sprintf("%s %s %s %s $%d", strsearch, whereand, item.Haystack, item.Operator, offset+nextidx)
+			nextidx++
+			searcharr = append(searcharr, item.Needle)
+		}
 	}
 	return strsearch, searcharr
 }

@@ -66,7 +66,7 @@ func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
 // Disallow for now.
 // func (user *User) Get(request *gondulapi.Request) gondulapi.Result {
 // 	token, tokenExists := request.PathArgs["token"]
-// 	if !tokenExists {
+// 	if !tokenExists || token == "" {
 // 		return gondulapi.Result{Code: 400, Message: "missing token"}
 // 	}
 
@@ -94,13 +94,16 @@ func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
 // 		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate token"}
 // 	}
 
-// 	return user.create()
+// 	result := user.create()
+//  result.Code = 201
+//  result.Location = fmt.Sprintf("%v/user/%v", gondulapi.Config.SitePrefix, user.Token)
+//  return result
 // }
 
 // Put updates a user.
 func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
 	token, tokenExists := request.PathArgs["token"]
-	if !tokenExists {
+	if !tokenExists || token == "" {
 		return gondulapi.Result{Code: 400, Message: "missing token"}
 	}
 
@@ -126,7 +129,7 @@ func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
 // Disallow for now.
 // func (user *User) Delete(request *gondulapi.Request) gondulapi.Result {
 // 	token, tokenExists := request.PathArgs["token"]
-// 	if !tokenExists {
+// 	if !tokenExists || token == "" {
 // 		return gondulapi.Result{Code: 400, Message: "missing token"}
 // 	}
 
@@ -169,16 +172,13 @@ func (user *User) update() gondulapi.Result {
 }
 
 func (user *User) exists() (bool, error) {
-	rows, err := db.DB.Query("SELECT token FROM users WHERE token = $1", user.Token)
-	if err != nil {
-		return false, err
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE token = $1", user.Token)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return hasNext, nil
+	return count > 0, nil
 }
 
 func (user *User) validate() gondulapi.Result {
@@ -193,24 +193,23 @@ func (user *User) validate() gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing email address"}
 	}
 
-	if ok, err := user.checkUniqueUsername(); err != nil {
+	// Note: Allow both new and existing.
+
+	if exists, err := user.existsUsername(); err != nil {
 		return gondulapi.Result{Error: err}
-	} else if !ok {
+	} else if exists {
 		return gondulapi.Result{Code: 409, Message: "username already exists"}
 	}
 
 	return gondulapi.Result{}
 }
 
-func (user *User) checkUniqueUsername() (bool, error) {
-	rows, err := db.DB.Query("SELECT token FROM users WHERE token != $1 AND username = $2", user.Token, user.Username)
-	if err != nil {
-		return false, err
+func (user *User) existsUsername() (bool, error) {
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE token != $1 AND username = $2", user.Token, user.Username)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
 	}
-	defer func() {
-		rows.Close()
-	}()
-
-	hasNext := rows.Next()
-	return !hasNext, nil
+	return count > 0, nil
 }

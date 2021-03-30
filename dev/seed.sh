@@ -45,14 +45,14 @@ curl -sSf $ENDPOINT_TRACK --data '{"track": "net", "shortname": "task1", "name":
 echo
 echo "Seeding stations ..."
 ENDPOINT_STATION="${ENDPOINT}station/"
-curl -sSf $ENDPOINT_STATION --data '{"id": "1932481b-4126-4cf3-8913-49d0faff75f4", "track": "net", "shortname": "station1", "name": "Station #1", "status": "active", "credentials": "ssh 10.10.10.10 -p 1000\npassword abclol", "notes": "Idk, broken or smtn.\n\nAAAA"}'
+curl -sSf $ENDPOINT_STATION --data '{"id": "1932481b-4126-4cf3-8913-49d0faff75f4", "track": "net", "shortname": "1", "name": "Station #1", "status": "active", "credentials": "ssh 10.10.10.10 -p 1000\npassword abclol", "notes": "Idk, broken or smtn.\n\nAAAA"}'
 
 # Timeslots
 echo
 echo "Seeding timeslots ..."
 ENDPOINT_TIMESLOT="${ENDPOINT}timeslot/"
 curl -sSf $ENDPOINT_TIMESLOT --data '{"user_token": "396345b4-553a-4254-97dc-778bea02a86a", "track": "server"}'
-curl -sSf $ENDPOINT_TIMESLOT --data '{"user_token": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "station_shortname": "station1", "begin_time": "2021-03-27T12:12:18.927291Z", "end_time": "2021-03-27T13:12:18.927291Z"}'
+curl -sSf $ENDPOINT_TIMESLOT --data '{"user_token": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "station_shortname": "1", "begin_time": "2020-03-27T12:12:18.927291Z", "end_time": "3020-03-27T13:12:18.927291Z"}'
 
 # Tests
 echo
@@ -60,6 +60,6 @@ echo "Seeding tests (won't conflict) ..."
 ENDPOINT_TESTS="${ENDPOINT}tests/"
 curl -sSf $ENDPOINT_TESTS --data \
 '[
-    {"track": "net", "task_shortname": "task1", "shortname": "test1", "station_shortname": "station1", "name": "Testerino 1", "description": "Testus testicus", "sequence": 1, "status_success": true},
-    {"track": "net", "task_shortname": "task1", "shortname": "test2", "station_shortname": "station1", "name": "Testerino 2", "description": "Testus testicus 2", "sequence": 2, "status_success": false, "status_description": "Failed to ping the thing."}
+    {"track": "net", "task_shortname": "task1", "shortname": "test1", "station_shortname": "1", "name": "Testerino 1", "description": "Testus testicus", "sequence": 1, "status_success": true},
+    {"track": "net", "task_shortname": "task1", "shortname": "test2", "station_shortname": "1", "name": "Testerino 2", "description": "Testus testicus 2", "sequence": 2, "status_success": false, "status_description": "Failed to ping the thing."}
 ]'

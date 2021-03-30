@@ -4,7 +4,7 @@
 	"debug": true,
 	"site_prefix": "/api",
 	"server_tracks": {
-		"server1": {
+		"server": {
 			"base_url": "http://TODO",
 			"auth_username": "TODO",
 			"auth_password": "TODO",

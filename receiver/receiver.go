@@ -134,35 +134,59 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 // PUT and POST it also parses the input data.
 func handleRequest(receiver *receiver, input input) (output output) {
 	var result gondulapi.Result
+	var defaultCode int
+	var handlerData interface{}
 
 	// Handle handler handling
 	defer func() {
+		// Clear output
+		output.cachecontrol = ""
+		output.code = 0
+		output.location = ""
+		output.data = nil
+
 		if result.Error != nil {
-			// Internal server error, ignore everything else
 			log.WithError(result.Error).Warn("internal server error")
-			output.code = 500
-			output.data = message("internal server error")
-			return
+			result.Code = 500
 		}
 
-		// Override default code if handles provided one
 		if result.Code != 0 {
 			output.code = result.Code
+		} else {
+			output.code = defaultCode
 		}
 
-		if output.code >= 300 && output.code <= 399 {
-			// Redirect
+		switch {
+		case output.code >= 100 && output.code <= 199:
+		case output.code >= 200 && output.code <= 299:
+			// Data
+			if output.code == 204 {
+				output.data = nil
+			} else if handlerData == nil {
+				// Show report if no returned data
+				output.data = result
+			} else {
+				output.data = handlerData
+			}
+			// Location
+			if output.code == 201 {
+				output.location = result.Location
+			}
+		case output.code >= 300 && output.code <= 399:
+			output.data = nil
 			output.location = result.Location
-		} else if output.data == nil && output.code != 204 {
-			// Output available, show report
+		case output.code >= 400 && output.code <= 499:
 			output.data = result
+		default:
+			output.code = 500
+			output.data = message("internal server error")
 		}
 	}()
 
 	// No handler
 	if receiver == nil {
-		output.code = 404
-		output.data = message("handler not found")
+		result.Code = 404
+		result.Message = "endpoint not found"
 		return
 	}
 
@@ -200,70 +224,62 @@ func handleRequest(receiver *receiver, input input) (output output) {
 	item := receiver.allocator()
 	switch input.method {
 	case "GET":
-		output.code = 200
+		defaultCode = 200
 		get, ok := item.(gondulapi.Getter)
 		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
+			result.Code = 405
+			result.Message = "method not allowed for endpoint"
 			return
 		}
 		result = get.Get(&request)
-		output.data = get
+		handlerData = get
 	case "POST":
-		output.code = 200
+		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
-				output.code = 400
-				output.data = message("malformed data")
+				result.Code = 400
+				result.Message = "malformed data for endpoint"
 				return
 			}
 		}
 		post, ok := item.(gondulapi.Poster)
 		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
+			result.Code = 405
+			result.Message = "method not allowed for endpoint"
 			return
 		}
 		result = post.Post(&request)
 	case "PUT":
-		output.code = 200
+		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
-				output.code = 400
-				output.data = message("malformed data")
+				result.Code = 400
+				result.Message = "malformed data for endpoint"
 				return
 			}
 		}
 		put, ok := item.(gondulapi.Putter)
 		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
+			result.Code = 405
+			result.Message = "method not allowed for endpoint"
 			return
 		}
 		result = put.Put(&request)
 	case "DELETE":
-		output.code = 200
+		defaultCode = 200
 		del, ok := item.(gondulapi.Deleter)
 		if !ok {
-			output.code = 405
-			output.data = message("method not allowed")
+			result.Code = 405
+			result.Message = "method not allowed for endpoint"
 			return
 		}
 		result = del.Delete(&request)
 	default:
-		output.code = 405
-		output.data = message("method not allowed")
+		result.Code = 405
+		result.Message = "method not allowed for endpoint"
+		return
 	}
 
-	return
-}
-
-// message is a convenience function
-func message(str string, v ...interface{}) (m struct {
-	Message string `json:"message"`
-	Error   string `json:"error,omitempty"`
-}) {
-	m.Message = fmt.Sprintf(str, v...)
 	return
 }
 
@@ -306,7 +322,7 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 	w.Header().Set("ETag", etagstr)
 
 	// Redirect
-	if code >= 300 && code <= 399 {
+	if output.location != "" {
 		w.Header().Set("Location", output.location)
 	}
 
@@ -315,4 +331,12 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 	if code != 204 {
 		fmt.Fprintf(w, "%s\n", b)
 	}
+}
+
+// message is a convenience function
+func message(str string, v ...interface{}) (m struct {
+	Message string `json:"message"`
+}) {
+	m.Message = fmt.Sprintf(str, v...)
+	return
 }

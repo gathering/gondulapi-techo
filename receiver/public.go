@@ -97,6 +97,11 @@ func Start() {
 	}
 	server.Addr = gapi.Config.ListenAddress
 
+	// Default handler, for consistent 404s
+	defaultReceiverSet := receiverSet{pathPrefix: "/"}
+	serveMux.Handle("/", defaultReceiverSet)
+
+	// Receiver handlers
 	if receiverSets != nil {
 		for _, set := range receiverSets {
 			serveMux.Handle(gapi.Config.SitePrefix+set.pathPrefix, set)
