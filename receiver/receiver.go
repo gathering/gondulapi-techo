@@ -107,7 +107,7 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 	}
 	input.url = request.URL
 	input.pathPrefix = pathPrefix
-	input.pathSuffix = fullPath[len(gondulapi.Config.SitePrefix+pathPrefix):]
+	input.pathSuffix = fullPath[len(pathPrefix):]
 	input.query = request.URL.Query()
 	input.method = request.Method
 

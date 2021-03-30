@@ -58,7 +58,7 @@ Timeslots are the participation objects for a user and a track. The start time, 
 | - | - | - | - |
 | `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
 | `/timeslot/[id][?user-token=<>]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Public (secret user token). |
-| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&state={unassigned|active}]` | `GET` | Get timeslots. | Admin. |
+| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&state={unassigned\|active}]` | `GET` | Get timeslots. | Admin. |
 
 ### Tasks
 
@@ -71,8 +71,8 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST` | Get/post tests. | Public (read) and admin. |
-| `/test/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post a test. | Public (read) and admin. |
+| `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST`, `DELETE` | Get/post/delete tests. | Public (read) and admin. |
+| `/test/[id]` | `GET`, `POST`, `DELETE` | Get/post/delete a test. | Public (read) and admin. |
 
 ## Examples
 

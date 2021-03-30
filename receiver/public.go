@@ -104,9 +104,11 @@ func Start() {
 	// Receiver handlers
 	if receiverSets != nil {
 		for _, set := range receiverSets {
-			serveMux.Handle(gapi.Config.SitePrefix+set.pathPrefix, set)
+			set.pathPrefix = gapi.Config.SitePrefix + set.pathPrefix
+
+			serveMux.Handle(set.pathPrefix, set)
 			for _, receiver := range set.receivers {
-				log.Infof("Added receiver %v[%v][%v]' for [%T].", gapi.Config.SitePrefix, set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
+				log.Infof("Added receiver [%v][%v]' for [%T].", set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
 			}
 		}
 	}

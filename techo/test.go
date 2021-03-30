@@ -73,7 +73,6 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 	if timeslot, ok := request.QueryArgs["timeslot"]; ok {
 		whereArgs = append(whereArgs, "timeslot", "=", timeslot)
 	}
-	// _, latestOk := request.QueryArgs["latest"]
 	if _, ok := request.QueryArgs["latest"]; ok {
 		whereArgs = append(whereArgs, "timeslot", "IS", nil)
 	}
@@ -82,17 +81,6 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}
 	}
-
-	// TODO move to SQL query
-	// if latestOk {
-	// 	oldTests := *tests
-	// 	*tests = make(Tests, 0)
-	// 	for _, test := range oldTests {
-	// 		if test.Timeslot == nil {
-	// 			*tests = append(*tests, test)
-	// 		}
-	// 	}
-	// }
 
 	return gondulapi.Result{}
 }
@@ -114,6 +102,49 @@ func (tests *Tests) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	return totalResult
+}
+
+// Delete delete multiple tests.
+func (tests *Tests) Delete(request *gondulapi.Request) gondulapi.Result {
+	var whereArgs []interface{}
+	if trackID, ok := request.QueryArgs["track"]; ok {
+		whereArgs = append(whereArgs, "track", "=", trackID)
+	}
+	if taskShortname, ok := request.QueryArgs["task-shortname"]; ok {
+		whereArgs = append(whereArgs, "task_shortname", "=", taskShortname)
+	}
+	if shortname, ok := request.QueryArgs["shortname"]; ok {
+		whereArgs = append(whereArgs, "shortname", "=", shortname)
+	}
+	if stationShortname, ok := request.QueryArgs["station-shortname"]; ok {
+		whereArgs = append(whereArgs, "station_shortname", "=", stationShortname)
+	}
+	if timeslot, ok := request.QueryArgs["timeslot"]; ok {
+		whereArgs = append(whereArgs, "timeslot", "=", timeslot)
+	}
+	if _, ok := request.QueryArgs["latest"]; ok {
+		whereArgs = append(whereArgs, "timeslot", "IS", nil)
+	}
+
+	selectErr := db.SelectMany(tests, "tests", whereArgs...)
+	if selectErr != nil {
+		return gondulapi.Result{Error: selectErr}
+	}
+
+	// Delete one by one, exit on first error
+	summedResult := gondulapi.Result{}
+	for _, test := range *tests {
+		result, err := db.Delete("tests", "id", "=", test.ID)
+		if err != nil {
+			summedResult.Error = err
+			return summedResult
+		}
+		summedResult.Affected += result.Affected
+		summedResult.Ok += result.Ok
+		summedResult.Failed += result.Failed
+	}
+
+	return summedResult
 }
 
 // Get gets a single test.
@@ -163,7 +194,8 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	// Delete old tests with and without timeslot
-	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot IS NULL)", test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.Timeslot)
+	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot IS NULL)",
+		test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.Timeslot)
 	if deleteErr != nil {
 		return gondulapi.Result{Error: deleteErr}
 	}
@@ -197,6 +229,31 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	totalResult.Code = 201
 	totalResult.Location = fmt.Sprintf("%v/test/%v", gondulapi.Config.SitePrefix, test.ID)
 	return totalResult
+}
+
+// Delete deletes a task.
+func (test *Test) Delete(request *gondulapi.Request) gondulapi.Result {
+	rawID, rawIDExists := request.PathArgs["id"]
+	if !rawIDExists || rawID == "" {
+		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+	}
+	id, uuidError := uuid.Parse(rawID)
+	if uuidError != nil {
+		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+	}
+
+	test.ID = &id
+	exists, err := test.exists()
+	if err != nil {
+		return gondulapi.Result{Failed: 1, Error: err}
+	}
+	if !exists {
+		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	}
+
+	result, err := db.Delete("tests", "id", "=", test.ID)
+	result.Error = err
+	return result
 }
 
 func (test *Test) create() gondulapi.Result {
