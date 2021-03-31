@@ -74,7 +74,7 @@ type Result struct {
 
 // HasErrorOrCode returns true if it contains an error or the status code has been set (not 0).
 func (result *Result) HasErrorOrCode() bool {
-	return result.Error != nil || result.Code != 0
+	return result.Error != nil || (result.Code != 0 && (result.Code < 200 || result.Code >= 299))
 }
 
 // Getter implements Get method, which should fetch the object represented

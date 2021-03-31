@@ -87,8 +87,6 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 
 // Post posts multiple tests which may overwrite old ones.
 func (tests *Tests) Post(request *gondulapi.Request) gondulapi.Result {
-	// TODO do this better (transaction?)
-
 	// Feed individual tests to the individual post endpoint, stop on first error
 	totalResult := gondulapi.Result{}
 	for _, test := range *tests {

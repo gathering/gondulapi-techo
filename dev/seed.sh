@@ -3,6 +3,8 @@
 # Seed some example data into the backend.
 # Requires the backend to be running.
 
+set -u
+
 ENDPOINT="localhost:8080/api/"
 
 # Users

@@ -181,6 +181,10 @@ func handleRequest(receiver *receiver, input input) (output output) {
 			output.code = 500
 			output.data = message("internal server error")
 		}
+
+		if input.method == "OPTIONS" || input.method == "HEAD" {
+			output.data = nil
+		}
 	}()
 
 	// No handler
@@ -223,6 +227,18 @@ func handleRequest(receiver *receiver, input input) (output output) {
 	// Find handler and handle
 	item := receiver.allocator()
 	switch input.method {
+	case "OPTIONS":
+		defaultCode = 200
+	case "HEAD":
+		defaultCode = 200
+		get, ok := item.(gondulapi.Getter)
+		if !ok {
+			result.Code = 405
+			result.Message = "method not allowed for endpoint"
+			return
+		}
+		result = get.Get(&request)
+		handlerData = nil
 	case "GET":
 		defaultCode = 200
 		get, ok := item.(gondulapi.Getter)
@@ -286,22 +302,22 @@ func handleRequest(receiver *receiver, input input) (output output) {
 // answer replies to a HTTP request with the provided output, optionally
 // formatting the output prettily. It also calculates an ETag.
 func answerRequest(w http.ResponseWriter, input input, output output) {
-	if output.code >= 200 && output.code <= 299 {
-		log.WithFields(log.Fields{
-			"code":     output.code,
-			"location": output.location,
-		}).Trace("Request done")
-	} else {
+	if output.code >= 400 && output.code <= 499 {
 		log.WithFields(log.Fields{
 			"code":     output.code,
 			"location": output.location,
 			"data":     output.data,
 		}).Trace("Request done")
+	} else {
+		log.WithFields(log.Fields{
+			"code":     output.code,
+			"location": output.location,
+		}).Trace("Request done")
 	}
 
 	code := output.code
 
-	// Serialize output data as JSON
+	// Content
 	var b []byte
 	var jsonErr error
 	if input.pretty {
@@ -315,6 +331,12 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 		code = 500
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	// CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Max-Age", "300") // 5 minutes
 
 	// Caching header
 	etagraw := sha256.Sum256(b)
