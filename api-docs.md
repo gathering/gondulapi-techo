@@ -6,6 +6,7 @@
 - All listing endpoints support `?limit=<n>` to limit the number of returned objects (WIP).
 - Some listing endpoints support `?brief` to hide less important fields, to make the dataset smaller when they're not needed (WIP).
 - PUT may have PATCH semantics.
+- PUT generally allows creating new resources if they don't already exist.
 
 ## Authentication & Authorization
 

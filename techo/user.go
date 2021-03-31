@@ -62,44 +62,6 @@ func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
 	return gondulapi.Result{}
 }
 
-// Get gets a single user.
-// Disallow for now.
-// func (user *User) Get(request *gondulapi.Request) gondulapi.Result {
-// 	token, tokenExists := request.PathArgs["token"]
-// 	if !tokenExists || token == "" {
-// 		return gondulapi.Result{Code: 400, Message: "missing token"}
-// 	}
-
-// 	found, err := db.Select(user, "users", "token", "=", token)
-// 	if err != nil {
-// 		return gondulapi.Result{Error: err}
-// 	}
-// 	if !found {
-// 		return gondulapi.Result{Code: 404, Message: "not found"}
-// 	}
-
-// 	return gondulapi.Result{}
-// }
-
-// Post creates a new user.
-// Disallow for now.
-// func (user *User) Post(request *gondulapi.Request) gondulapi.Result {
-// 	if result := user.validate(); result.HasErrorOrCode() {
-// 		return result
-// 	}
-
-// 	if exists, err := user.exists(); err != nil {
-// 		return gondulapi.Result{Failed: 1, Error: err}
-// 	} else if exists {
-// 		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate token"}
-// 	}
-
-// 	result := user.create()
-//  result.Code = 201
-//  result.Location = fmt.Sprintf("%v/user/%v", gondulapi.Config.SitePrefix, user.Token)
-//  return result
-// }
-
 // Put updates a user.
 func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
 	token, tokenExists := request.PathArgs["token"]
@@ -114,38 +76,8 @@ func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
 		return result
 	}
 
-	// Create or update.
-	exists, existsErr := user.exists()
-	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
-	}
-	if exists {
-		return user.update()
-	}
-	return user.create()
+	return user.createOrUpdate()
 }
-
-// Delete deletes a user.
-// Disallow for now.
-// func (user *User) Delete(request *gondulapi.Request) gondulapi.Result {
-// 	token, tokenExists := request.PathArgs["token"]
-// 	if !tokenExists || token == "" {
-// 		return gondulapi.Result{Code: 400, Message: "missing token"}
-// 	}
-
-// 	user.Token = token
-// 	exists, existsErr := user.exists()
-// 	if existsErr != nil {
-// 		return gondulapi.Result{Failed: 1, Error: existsErr}
-// 	}
-// 	if !exists {
-// 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
-// 	}
-
-// 	result, err := db.Delete("users", "token", "=", user.Token)
-// 	result.Error = err
-// 	return result
-// }
 
 func (user *User) create() gondulapi.Result {
 	if exists, err := user.exists(); err != nil {
@@ -159,14 +91,19 @@ func (user *User) create() gondulapi.Result {
 	return result
 }
 
-func (user *User) update() gondulapi.Result {
-	if exists, err := user.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (user *User) createOrUpdate() gondulapi.Result {
+	exists, existsErr := user.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("users", user, "token", "=", user.Token)
+	if exists {
+		result, err := db.Update("users", user, "token", "=", user.Token)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("users", user)
 	result.Error = err
 	return result
 }
@@ -192,8 +129,6 @@ func (user *User) validate() gondulapi.Result {
 	case user.EmailAddress == "":
 		return gondulapi.Result{Code: 400, Message: "missing email address"}
 	}
-
-	// Note: Allow both new and existing.
 
 	if exists, err := user.existsUsername(); err != nil {
 		return gondulapi.Result{Error: err}

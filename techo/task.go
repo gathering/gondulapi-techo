@@ -90,13 +90,17 @@ func (task *Task) Post(request *gondulapi.Request) gondulapi.Result {
 		newID := uuid.New()
 		task.ID = &newID
 	}
-	if result := task.validate(true); result.HasErrorOrCode() {
+	if result := task.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
 	result := task.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/task/%v", gondulapi.Config.SitePrefix, task.ID)
+	result.Location = fmt.Sprintf("%v/task/%v/", gondulapi.Config.SitePrefix, task.ID)
 	return result
 }
 
@@ -111,11 +115,11 @@ func (task *Task) Put(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
-	if result := task.validate(false); result.HasErrorOrCode() {
+	if result := task.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
-	return task.update()
+	return task.createOrUpdate()
 }
 
 // Delete deletes a task.
@@ -155,14 +159,19 @@ func (task *Task) create() gondulapi.Result {
 	return result
 }
 
-func (task *Task) update() gondulapi.Result {
-	if exists, err := task.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (task *Task) createOrUpdate() gondulapi.Result {
+	exists, existsErr := task.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("tasks", task, "id", "=", task.ID)
+	if exists {
+		result, err := db.Update("tasks", task, "id", "=", task.ID)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("tasks", task)
 	result.Error = err
 	return result
 }
@@ -187,7 +196,7 @@ func (task *Task) existsShortname() (bool, error) {
 	return count > 0, nil
 }
 
-func (task *Task) validate(new bool) gondulapi.Result {
+func (task *Task) validate() gondulapi.Result {
 	switch {
 	case task.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -197,15 +206,6 @@ func (task *Task) validate(new bool) gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing shortname"}
 	case task.Name == "":
 		return gondulapi.Result{Code: 400, Message: "missing name"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := task.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	if exists, err := task.existsTrackShortname(); err != nil {

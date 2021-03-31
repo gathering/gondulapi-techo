@@ -102,8 +102,12 @@ func (family *DocumentFamily) Post(request *gondulapi.Request) gondulapi.Result 
 	}
 
 	result := family.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/document-family/%v", gondulapi.Config.SitePrefix, family.ID)
+	result.Location = fmt.Sprintf("%v/document-family/%v/", gondulapi.Config.SitePrefix, family.ID)
 	return result
 }
 
@@ -126,7 +130,7 @@ func (family *DocumentFamily) Put(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	return family.update()
+	return family.createOrUpdate()
 }
 
 // Delete deletes a family.
@@ -162,14 +166,19 @@ func (family *DocumentFamily) create() gondulapi.Result {
 	return result
 }
 
-func (family *DocumentFamily) update() gondulapi.Result {
-	if exists, err := family.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (family *DocumentFamily) createOrUpdate() gondulapi.Result {
+	exists, existsErr := family.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("document_families", family, "id", "=", family.ID)
+	if exists {
+		result, err := db.Update("document_families", family, "id", "=", family.ID)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("document_families", family)
 	result.Error = err
 	return result
 }
@@ -252,11 +261,12 @@ func (document *Document) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	result := document.create()
-	if !result.HasErrorOrCode() {
-		result.Code = 201
-		result.Location = fmt.Sprintf("%v/document/%v/%v/", gondulapi.Config.SitePrefix, document.FamilyID, document.Shortname)
+	if result.HasErrorOrCode() {
+		return result
 	}
 
+	result.Code = 201
+	result.Location = fmt.Sprintf("%v/document/%v/%v/", gondulapi.Config.SitePrefix, document.FamilyID, document.Shortname)
 	return result
 }
 
@@ -315,18 +325,6 @@ func (document *Document) create() gondulapi.Result {
 	}
 
 	result, err := db.Insert("documents", document)
-	result.Error = err
-	return result
-}
-
-func (document *Document) update() gondulapi.Result {
-	if exists, err := document.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
-	}
-
-	result, err := db.Update("documents", document, "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
 	result.Error = err
 	return result
 }

@@ -179,13 +179,17 @@ func (station *Station) Post(request *gondulapi.Request) gondulapi.Result {
 		newID := uuid.New()
 		station.ID = &newID
 	}
-	if result := station.validate(true); result.HasErrorOrCode() {
+	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
 	result := station.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/station/%v", gondulapi.Config.SitePrefix, station.ID)
+	result.Location = fmt.Sprintf("%v/station/%v/", gondulapi.Config.SitePrefix, station.ID)
 	return result
 }
 
@@ -203,11 +207,11 @@ func (station *Station) Put(request *gondulapi.Request) gondulapi.Result {
 	if *station.ID != id {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := station.validate(false); result.HasErrorOrCode() {
+	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
-	return station.update()
+	return station.createOrUpdate()
 }
 
 // Delete deletes a station.
@@ -247,14 +251,19 @@ func (station *Station) create() gondulapi.Result {
 	return result
 }
 
-func (station *Station) update() gondulapi.Result {
-	if exists, err := station.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (station *Station) createOrUpdate() gondulapi.Result {
+	exists, existsErr := station.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("stations", station, "id", "=", station.ID)
+	if exists {
+		result, err := db.Update("stations", station, "id", "=", station.ID)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("stations", station)
 	result.Error = err
 	return result
 }
@@ -279,7 +288,7 @@ func (station *Station) existsShortname() (bool, error) {
 	return count > 0, nil
 }
 
-func (station *Station) validate(new bool) gondulapi.Result {
+func (station *Station) validate() gondulapi.Result {
 	switch {
 	case station.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -287,15 +296,6 @@ func (station *Station) validate(new bool) gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing track ID"}
 	case !station.validateStatus():
 		return gondulapi.Result{Code: 400, Message: "missing or invalid status"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := station.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	if exists, err := station.existsTrackShortname(); err != nil {
@@ -398,13 +398,17 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
 	station.Notes = fmt.Sprintf("FQDN: %v\nZone: %v\nVLAN ID: %v\nVLAN IPv4 Subnet: %v",
 		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
-	if result := station.validate(true); result.HasErrorOrCode() {
+	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
 	result := station.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%s/station/%s", gondulapi.Config.SitePrefix, station.ID)
+	result.Location = fmt.Sprintf("%s/station/%s/", gondulapi.Config.SitePrefix, station.ID)
 	return result
 }
 

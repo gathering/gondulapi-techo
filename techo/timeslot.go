@@ -148,7 +148,7 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 		newID := uuid.New()
 		timeslot.ID = &newID
 	}
-	if result := timeslot.validate(true); result.HasErrorOrCode() {
+	if result := timeslot.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -159,8 +159,12 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	result := timeslot.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/timeslot/%v", gondulapi.Config.SitePrefix, timeslot.ID)
+	result.Location = fmt.Sprintf("%v/timeslot/%v/", gondulapi.Config.SitePrefix, timeslot.ID)
 	return result
 }
 
@@ -184,7 +188,7 @@ func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 	if timeslot.ID != nil && (*timeslot.ID).String() != id {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := timeslot.validate(false); result.HasErrorOrCode() {
+	if result := timeslot.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -206,7 +210,7 @@ func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid token"}
 	}
 
-	return timeslot.update()
+	return timeslot.createOrUpdate()
 }
 
 // Delete deletes a timeslot.
@@ -265,14 +269,19 @@ func (timeslot *Timeslot) create() gondulapi.Result {
 	return result
 }
 
-func (timeslot *Timeslot) update() gondulapi.Result {
-	if exists, err := timeslot.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (timeslot *Timeslot) createOrUpdate() gondulapi.Result {
+	exists, existsErr := timeslot.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("timeslots", timeslot, "id", "=", timeslot.ID)
+	if exists {
+		result, err := db.Update("timeslots", timeslot, "id", "=", timeslot.ID)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("timeslots", timeslot)
 	result.Error = err
 	return result
 }
@@ -297,7 +306,7 @@ func (timeslot *Timeslot) existsWithToken() (bool, error) {
 	return count > 0, nil
 }
 
-func (timeslot *Timeslot) validate(new bool) gondulapi.Result {
+func (timeslot *Timeslot) validate() gondulapi.Result {
 	switch {
 	case timeslot.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -309,15 +318,6 @@ func (timeslot *Timeslot) validate(new bool) gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "only begin or end time set"}
 	case timeslot.BeginTime != nil && timeslot.EndTime != nil && timeslot.EndTime.Before(*timeslot.BeginTime):
 		return gondulapi.Result{Code: 400, Message: "cannot end before it begins"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := timeslot.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	user := User{Token: timeslot.UserToken}

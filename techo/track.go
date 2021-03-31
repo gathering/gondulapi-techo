@@ -86,7 +86,7 @@ func (track *Track) Get(request *gondulapi.Request) gondulapi.Result {
 
 // Post creates a new station.
 func (track *Track) Post(request *gondulapi.Request) gondulapi.Result {
-	if result := track.validate(true); result.HasErrorOrCode() {
+	if result := track.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -97,8 +97,12 @@ func (track *Track) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	result := track.create()
+	if result.HasErrorOrCode() {
+		return result
+	}
+
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/track/%v", gondulapi.Config.SitePrefix, track.ID)
+	result.Location = fmt.Sprintf("%v/track/%v/", gondulapi.Config.SitePrefix, track.ID)
 	return result
 }
 
@@ -112,7 +116,7 @@ func (track *Track) Put(request *gondulapi.Request) gondulapi.Result {
 	if track.ID != id {
 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := track.validate(false); result.HasErrorOrCode() {
+	if result := track.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -124,7 +128,7 @@ func (track *Track) Put(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	return track.update()
+	return track.createOrUpdate()
 }
 
 // Delete deletes a station.
@@ -160,14 +164,19 @@ func (track *Track) create() gondulapi.Result {
 	return result
 }
 
-func (track *Track) update() gondulapi.Result {
-	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+func (track *Track) createOrUpdate() gondulapi.Result {
+	exists, existsErr := track.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
 	}
 
-	result, err := db.Update("tracks", track, "id", "=", track.ID)
+	if exists {
+		result, err := db.Update("tracks", track, "id", "=", track.ID)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("tracks", track)
 	result.Error = err
 	return result
 }
@@ -182,21 +191,12 @@ func (track *Track) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (track *Track) validate(new bool) gondulapi.Result {
+func (track *Track) validate() gondulapi.Result {
 	switch {
 	case track.ID == "":
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	case !track.validateType():
 		return gondulapi.Result{Code: 400, Message: "missing or invalid type"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	return gondulapi.Result{}

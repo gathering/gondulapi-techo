@@ -173,7 +173,7 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	now := time.Now()
 	test.Timestamp = &now
 
-	if result := test.validate(true); result.HasErrorOrCode() {
+	if result := test.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
@@ -267,18 +267,6 @@ func (test *Test) create() gondulapi.Result {
 	return result
 }
 
-func (test *Test) update() gondulapi.Result {
-	if exists, err := test.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
-	}
-
-	result, err := db.Update("tests", test, "id", "=", test.ID)
-	result.Error = err
-	return result
-}
-
 func (test *Test) exists() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM tests WHERE id = $1", test.ID)
@@ -289,7 +277,7 @@ func (test *Test) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (test *Test) validate(new bool) gondulapi.Result {
+func (test *Test) validate() gondulapi.Result {
 	switch {
 	case test.ID == nil:
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
@@ -307,15 +295,6 @@ func (test *Test) validate(new bool) gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "missing success status"}
 	case test.Timestamp == nil:
 		return gondulapi.Result{Code: 400, Message: "missing timestamp"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := test.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	track := Track{ID: test.TrackID}
