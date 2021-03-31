@@ -49,6 +49,7 @@ func init() {
 
 // Get gets multiple tasks.
 func (tasks *Tasks) Get(request *gondulapi.Request) gondulapi.Result {
+	// TODO order by sequence
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)

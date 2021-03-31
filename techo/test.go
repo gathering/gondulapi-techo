@@ -57,6 +57,7 @@ func init() {
 
 // Get gets multiple tests.
 func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
+	// TODO order by sequence
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)

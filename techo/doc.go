@@ -63,6 +63,7 @@ func init() {
 
 // Get gets multiple families.
 func (families *DocumentFamilies) Get(request *gondulapi.Request) gondulapi.Result {
+	// TODO order by sequence
 	selectErr := db.SelectMany(families, "document_families")
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}

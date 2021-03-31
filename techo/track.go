@@ -40,7 +40,7 @@ const (
 type Track struct {
 	ID   string    `column:"id" json:"id"`     // Generated, required, unique
 	Type TrackType `column:"type" json:"type"` // Required
-	Name TrackType `column:"name" json:"name"` // Required
+	Name string    `column:"name" json:"name"` // Required
 }
 
 // Tracks is a list of tracks.
