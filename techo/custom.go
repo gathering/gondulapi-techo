@@ -42,7 +42,7 @@ type stationTasksTestsTask struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Sequence    *int       `json:"sequence"`
-	Tests       []*Test    `json:"tests"`
+	Tests       []Test     `json:"tests"`
 }
 
 func init() {
@@ -119,7 +119,7 @@ func (t4 *StationTasksTests) Get(request *gondulapi.Request) gondulapi.Result {
 		t4Task.Name = task.Name
 		t4Task.Description = task.Description
 		t4Task.Sequence = task.Sequence
-		t4Task.Tests = make([]*Test, 0)
+		t4Task.Tests = make([]Test, 0)
 		t4.Tasks = append(t4.Tasks, &t4Task)
 		t4TaskMap[task.Shortname] = &t4Task
 	}
@@ -128,7 +128,7 @@ func (t4 *StationTasksTests) Get(request *gondulapi.Request) gondulapi.Result {
 		if !t4TaskOk {
 			continue
 		}
-		t4Task.Tests = append(t4Task.Tests, &test)
+		t4Task.Tests = append(t4Task.Tests, test)
 	}
 
 	return gondulapi.Result{}
