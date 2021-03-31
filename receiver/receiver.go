@@ -86,6 +86,10 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	var foundReceiver *receiver
 	for _, receiver := range set.receivers {
 		if receiver.pathPattern.MatchString(input.pathSuffix) {
+			log.WithFields(log.Fields{
+				"prefix":  set.pathPrefix,
+				"pattern": receiver.pathPattern.String(),
+			}).Trace("Found receiver")
 			foundReceiver = &receiver
 			break
 		}

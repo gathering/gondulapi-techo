@@ -26,16 +26,24 @@ curl -sSf $ENDPOINT_DOCUMENT_FAMILY --data '{"id": "reference", "name": "Referen
 echo
 echo "Seeding documents ..."
 ENDPOINT_DOCUMENT="${ENDPOINT}document/"
-curl -sSf $ENDPOINT_DOCUMENT --data '{"id": "396345b4-553a-4254-97dc-878bea02a86b", "family": "demo", "shortname": "demo", "name": "Demo!", "content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "content_format": "plaintext"}'
+ENDPOINT_DOCUMENTS="${ENDPOINT}documents/"
+curl -sSf $ENDPOINT_DOCUMENT --data '{"family": "demo", "shortname": "demo", "name": "Demo!", "content": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "content_format": "plaintext"}'
 curl -sSf $ENDPOINT_DOCUMENT --data '{"family": "reference", "shortname": "part2", "sequence": 2, "name": "Title for part 2", "content": "This is *markup* more or less. This is `code`.", "content_format": "markdown"}'
 curl -sSf $ENDPOINT_DOCUMENT --data '{"family": "reference", "shortname": "part3", "sequence": 3, "content": "Nameless."}'
+curl -sSf ${ENDPOINT_DOCUMENT}reference/part5/ -X PUT --data '{"family": "reference", "shortname": "part5", "sequence": 5, "content": "Nameless again."}'
+curl -sSf ${ENDPOINT_DOCUMENT}reference/part5/ -X PUT --data '{"family": "reference", "shortname": "part5", "sequence": 5, "content": "Named!."}'
+curl -sSf ${ENDPOINT_DOCUMENTS} -X PUT --data \
+'[
+    {"family": "reference", "shortname": "part10", "sequence": 10, "content": "a"},
+    {"family": "reference", "shortname": "part11", "sequence": 11, "content": "b"}
+]'
 
 # Tracks
 echo
 echo "Seeding tracks ..."
 ENDPOINT_TRACK="${ENDPOINT}track/"
 curl -sSf $ENDPOINT_TRACK --data '{"id": "net", "type": "net", "name": "Network"}'
-curl -sSf $ENDPOINT_TRACK --data '{"id": "server", "type": "server", "name:" "Server"}'
+curl -sSf $ENDPOINT_TRACK --data '{"id": "server", "type": "server", "name": "Server"}'
 
 # Tasks
 echo

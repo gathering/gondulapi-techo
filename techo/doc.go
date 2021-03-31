@@ -27,7 +27,6 @@ import (
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
 	"github.com/gathering/gondulapi/receiver"
-	"github.com/google/uuid"
 )
 
 // DocumentFamily is a category of documents.
@@ -41,7 +40,7 @@ type DocumentFamilies []*DocumentFamily
 
 // Document is a document.
 type Document struct {
-	ID            *uuid.UUID `column:"id" json:"id"`               // Generated, required, unique
+	// ID            *uuid.UUID `column:"id" json:"id"`               // Generated, required, unique
 	FamilyID      string     `column:"family" json:"family"`       // Required
 	Shortname     string     `column:"shortname" json:"shortname"` // Required, unique with family ID
 	Name          string     `column:"name" json:"name"`
@@ -58,7 +57,7 @@ func init() {
 	receiver.AddHandler("/document-families/", "^$", func() interface{} { return &DocumentFamilies{} })
 	receiver.AddHandler("/document-family/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &DocumentFamily{} })
 	receiver.AddHandler("/documents/", "^$", func() interface{} { return &Documents{} })
-	receiver.AddHandler("/document/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Document{} })
+	receiver.AddHandler("/document/", "^(?:(?P<family_id>[^/]+)/(?P<shortname>[^/]+)/)?$", func() interface{} { return &Document{} })
 }
 
 // Get gets multiple families.
@@ -203,14 +202,37 @@ func (documents *Documents) Get(request *gondulapi.Request) gondulapi.Result {
 	return gondulapi.Result{}
 }
 
-// Get gets a single document.
-func (document *Document) Get(request *gondulapi.Request) gondulapi.Result {
-	id, idExists := request.PathArgs["id"]
-	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+// Put creates or updates multiple documents.
+func (documents *Documents) Put(request *gondulapi.Request) gondulapi.Result {
+	// Feed individual tests to the individual post endpoint, stop on first error
+	totalResult := gondulapi.Result{}
+	for _, document := range *documents {
+		request.PathArgs["family_id"] = document.FamilyID
+		request.PathArgs["shortname"] = document.Shortname
+		result := document.Put(request)
+		if result.HasErrorOrCode() {
+			return result
+		}
+		totalResult.Affected += result.Affected
+		totalResult.Ok += result.Ok
+		totalResult.Failed += result.Failed
 	}
 
-	found, err := db.Select(document, "documents", "id", "=", id)
+	return totalResult
+}
+
+// Get gets a single document.
+func (document *Document) Get(request *gondulapi.Request) gondulapi.Result {
+	familyID, familyIDExists := request.PathArgs["family_id"]
+	if !familyIDExists || familyID == "" {
+		return gondulapi.Result{Code: 400, Message: "missing family ID"}
+	}
+	shortname, shortnameExists := request.PathArgs["shortname"]
+	if !shortnameExists || shortname == "" {
+		return gondulapi.Result{Code: 400, Message: "missing shortname"}
+	}
+
+	found, err := db.Select(document, "documents", "family", "=", familyID, "shortname", "=", shortname)
 	if err != nil {
 		return gondulapi.Result{Error: err}
 	}
@@ -223,55 +245,55 @@ func (document *Document) Get(request *gondulapi.Request) gondulapi.Result {
 
 // Post creates a new document.
 func (document *Document) Post(request *gondulapi.Request) gondulapi.Result {
-	if document.ID == nil {
-		newID := uuid.New()
-		document.ID = &newID
-	}
 	now := time.Now()
 	document.LastChange = &now
-	if result := document.validate(true); result.HasErrorOrCode() {
+	if result := document.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
 	result := document.create()
-	result.Code = 201
-	result.Location = fmt.Sprintf("%v/document/%v", gondulapi.Config.SitePrefix, document.ID)
+	if !result.HasErrorOrCode() {
+		result.Code = 201
+		result.Location = fmt.Sprintf("%v/document/%v/%v/", gondulapi.Config.SitePrefix, document.FamilyID, document.Shortname)
+	}
+
 	return result
 }
 
-// Put updates a document.
+// Put creates or updates a document.
 func (document *Document) Put(request *gondulapi.Request) gondulapi.Result {
-	id, idExists := request.PathArgs["id"]
-	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+	familyID, familyIDExists := request.PathArgs["family_id"]
+	if !familyIDExists || familyID == "" {
+		return gondulapi.Result{Code: 400, Message: "missing family ID"}
+	}
+	shortname, shortnameExists := request.PathArgs["shortname"]
+	if !shortnameExists || shortname == "" {
+		return gondulapi.Result{Code: 400, Message: "missing shortname"}
 	}
 
-	if document.ID != nil && (*document.ID).String() != id {
-		return gondulapi.Result{Failed: 1, Message: "mismatch between URL and JSON IDs"}
+	if document.FamilyID != familyID || document.Shortname != shortname {
+		return gondulapi.Result{Failed: 1, Message: "mismatch for family ID or shortname between URL and JSON"}
 	}
 
 	now := time.Now()
 	document.LastChange = &now
 
-	if result := document.validate(false); result.HasErrorOrCode() {
-		return result
-	}
-
-	return document.update()
+	return document.createOrUpdate()
 }
 
 // Delete deletes a document.
 func (document *Document) Delete(request *gondulapi.Request) gondulapi.Result {
-	rawID, rawIDExists := request.PathArgs["id"]
-	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+	familyID, familyIDExists := request.PathArgs["family_id"]
+	if !familyIDExists || familyID == "" {
+		return gondulapi.Result{Code: 400, Message: "missing family ID"}
 	}
-	id, uuidError := uuid.Parse(rawID)
-	if uuidError != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+	shortname, shortnameExists := request.PathArgs["shortname"]
+	if !shortnameExists || shortname == "" {
+		return gondulapi.Result{Code: 400, Message: "missing shortname"}
 	}
 
-	document.ID = &id
+	document.FamilyID = familyID
+	document.Shortname = shortname
 	exists, err := document.exists()
 	if err != nil {
 		return gondulapi.Result{Failed: 1, Error: err}
@@ -280,7 +302,7 @@ func (document *Document) Delete(request *gondulapi.Request) gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("documents", "id", "=", document.ID)
+	result, err := db.Delete("documents", "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
 	result.Error = err
 	return result
 }
@@ -304,14 +326,31 @@ func (document *Document) update() gondulapi.Result {
 		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Update("documents", document, "id", "=", document.ID)
+	result, err := db.Update("documents", document, "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
+	result.Error = err
+	return result
+}
+
+func (document *Document) createOrUpdate() gondulapi.Result {
+	exists, existsErr := document.exists()
+	if existsErr != nil {
+		return gondulapi.Result{Failed: 1, Error: existsErr}
+	}
+
+	if exists {
+		result, err := db.Update("documents", document, "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
+		result.Error = err
+		return result
+	}
+
+	result, err := db.Insert("documents", document)
 	result.Error = err
 	return result
 }
 
 func (document *Document) exists() (bool, error) {
 	var count int
-	row := db.DB.QueryRow("SELECT COUNT(*) FROM documents WHERE id = $1", document.ID)
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM documents WHERE family = $1 AND shortname = $2", document.FamilyID, document.Shortname)
 	rowErr := row.Scan(&count)
 	if rowErr != nil {
 		return false, rowErr
@@ -319,31 +358,14 @@ func (document *Document) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (document *Document) validate(new bool) gondulapi.Result {
+func (document *Document) validate() gondulapi.Result {
 	switch {
-	case document.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	case document.FamilyID == "":
 		return gondulapi.Result{Code: 400, Message: "missing family ID"}
 	case document.Shortname == "":
 		return gondulapi.Result{Code: 400, Message: "missing shortname"}
 	case document.LastChange == nil:
 		return gondulapi.Result{Code: 400, Message: "missing last update time"}
-	}
-
-	// Check if existence is as expected
-	if exists, err := document.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
-	} else if new && exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
-	} else if !new && !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
-	}
-
-	if exists, err := document.existsFamilyShortname(); err != nil {
-		return gondulapi.Result{Error: err}
-	} else if exists {
-		return gondulapi.Result{Code: 409, Message: "combination of family and shortname already exists"}
 	}
 
 	family := DocumentFamily{ID: document.FamilyID}
@@ -354,14 +376,4 @@ func (document *Document) validate(new bool) gondulapi.Result {
 	}
 
 	return gondulapi.Result{}
-}
-
-func (document *Document) existsFamilyShortname() (bool, error) {
-	var count int
-	row := db.DB.QueryRow("SELECT COUNT(*) FROM documents WHERE id != $1 AND family = $2 AND shortname = $3", document.ID, document.FamilyID, document.Shortname)
-	rowErr := row.Scan(&count)
-	if rowErr != nil {
-		return false, rowErr
-	}
-	return count > 0, nil
 }

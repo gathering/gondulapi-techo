@@ -30,8 +30,8 @@
 | - | - | - | - |
 | `/document-families/` | `GET` | Get address families. | Public. |
 | `/document-family/` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete an document family. | Public (read) and admin. |
-| `/documents/[?family=<>][&shortname=<>]` | `GET` | Get documents. | Public. |
-| `/document/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a document. | Public (read) and admin. |
+| `/documents/[?family=<>][&shortname=<>]` | `GET`, `PUT` | Get og create/update documents. | Public (read) and admin. |
+| `/document/[<family-id>/<shortname>]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a document. | Public (read) and admin. |
 
 ### Tracks
 

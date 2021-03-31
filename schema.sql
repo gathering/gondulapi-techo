@@ -11,17 +11,6 @@ SET row_security = off;
 SET default_tablespace = '';
 SET default_with_oids = false;
 
--- -- Function to update timestamp (field "time")
--- CREATE FUNCTION public.upd_timestamp() RETURNS trigger
---     LANGUAGE plpgsql
---     AS $$
--- BEGIN
---     NEW.time = CURRENT_TIMESTAMP;
---     RETURN NEW;
--- END;
--- $$;
--- ALTER FUNCTION public.upd_timestamp() OWNER TO gondulapi;
-
 -- Users table
 CREATE TABLE public.users (
     token text NOT NULL UNIQUE,
@@ -41,7 +30,6 @@ CREATE UNIQUE INDEX public_document_families_id_index ON public.document_familie
 
 -- Documents table
 CREATE TABLE public.documents (
-    id text NOT NULL UNIQUE,
     family text NOT NULL,
     shortname text NOT NULL,
     sequence integer,
@@ -51,7 +39,6 @@ CREATE TABLE public.documents (
     last_change timestamp with time zone NOT NULL,
     UNIQUE (family, shortname)
 );
-CREATE UNIQUE INDEX public_documents_id_index ON public.documents (id);
 CREATE UNIQUE INDEX public_documents_family_shortname_index ON public.documents (family, shortname);
 
 -- Tracks table
