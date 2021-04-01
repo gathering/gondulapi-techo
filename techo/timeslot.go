@@ -37,6 +37,7 @@ type Timeslot struct {
 	TrackID   string     `column:"track" json:"track"`           // Required
 	BeginTime *time.Time `column:"begin_time" json:"begin_time"` // Empty upon registration, used strictly for manual purposes
 	EndTime   *time.Time `column:"end_time" json:"end_time"`     // Empty upon registration, used strictly for manual purposes
+	Notes     string     `column:"notes" json:"notes"`           // Optional
 }
 
 // TimeslotForAdmins is a timeslot, accessible only by admins.

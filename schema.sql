@@ -81,7 +81,8 @@ CREATE TABLE public.timeslots (
     user_token text NOT NULL,
     track text NOT NULL,
     begin_time timestamp with time zone,
-    end_time timestamp with time zone
+    end_time timestamp with time zone,
+    notes test NOT NULL
 );
 CREATE UNIQUE INDEX public_timeslots_id_index ON public.timeslots (id);
 
