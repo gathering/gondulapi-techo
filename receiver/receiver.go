@@ -177,7 +177,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 				output.location = result.Location
 			}
 		case output.code >= 300 && output.code <= 399:
-			output.data = nil
+			output.data = result
 			output.location = result.Location
 		case output.code >= 400 && output.code <= 499:
 			output.data = result
@@ -322,19 +322,21 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 	code := output.code
 
 	// Content
-	var b []byte
-	var jsonErr error
-	if input.pretty {
-		b, jsonErr = json.MarshalIndent(output.data, "", "  ")
-	} else {
-		b, jsonErr = json.Marshal(output.data)
+	b := make([]byte, 0)
+	if output.data != nil {
+		var jsonErr error
+		if input.pretty {
+			b, jsonErr = json.MarshalIndent(output.data, "", "  ")
+		} else {
+			b, jsonErr = json.Marshal(output.data)
+		}
+		if jsonErr != nil {
+			log.Printf("Json marshal error: %v", jsonErr)
+			b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
+			code = 500
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
-	if jsonErr != nil {
-		log.Printf("Json marshal error: %v", jsonErr)
-		b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
-		code = 500
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	// CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")

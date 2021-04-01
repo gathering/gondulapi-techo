@@ -27,7 +27,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gathering/gondulapi"
 	"github.com/gathering/gondulapi/db"
@@ -41,11 +40,14 @@ import (
 type StationStatus string
 
 const (
-	stationStatusPreparing   StationStatus = "preparing"
-	stationStatusActive      StationStatus = "active"
-	stationStatusDirty       StationStatus = "dirty"
-	stationStatusTerminated  StationStatus = "terminated"
-	stationStatusMaintenance StationStatus = "maintenance"
+	// StationStatusActive means the station is ready to be assigned or is currently assigned.
+	StationStatusActive StationStatus = "active"
+	// StationStatusDirty means the station needs a cleanup before being reused (typically after use by net track).
+	StationStatusDirty StationStatus = "dirty"
+	// StationStatusTerminated means the station has been terminated (typically after use by server track).
+	StationStatusTerminated StationStatus = "terminated"
+	// StationStatusMaintenance means it's active but should not be used by any participants.
+	StationStatusMaintenance StationStatus = "maintenance"
 )
 
 // Station is station.
@@ -57,6 +59,7 @@ type Station struct {
 	Status      StationStatus `column:"status" json:"status"`           // Required
 	Credentials string        `column:"credentials" json:"credentials"` // Host, port, password, etc. (typically hidden)
 	Notes       string        `column:"notes" json:"notes"`             // Misc. notes
+	TimeslotID  string        `column:"timeslot" json:"timeslot"`       // Timeslot currently assigned to this station, if any
 }
 
 // Stations is a list of stations.
@@ -104,8 +107,26 @@ func (stations *Stations) Get(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	// Copy and hide credentials
+	_, timeslotIDOk := request.QueryArgs["timeslot"]
+	userToken, userTokenOk := request.QueryArgs["user-token"]
 	for _, station := range stationsForAdmins {
+		credentials := station.Credentials
 		station.Credentials = ""
+		// If filtering by timeslot and user token, show credentials if correct user token
+		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
+			var timeslot Timeslot
+			timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+				"id", "=", station.TimeslotID,
+				"user_token", "=", userToken,
+			)
+			if timeslotErr != nil {
+				return gondulapi.Result{Error: timeslotErr}
+			}
+			if timeslotFound {
+				station.Credentials = credentials
+			}
+		}
+
 		*stations = append(*stations, station)
 	}
 
@@ -124,6 +145,9 @@ func (stations *StationsForAdmins) Get(request *gondulapi.Request) gondulapi.Res
 	if status, ok := request.QueryArgs["status"]; ok {
 		whereArgs = append(whereArgs, "status", "=", status)
 	}
+	if timeslotID, ok := request.QueryArgs["timeslot"]; ok {
+		whereArgs = append(whereArgs, "timeslot", "=", timeslotID)
+	}
 
 	selectErr := db.SelectMany(stations, "stations", whereArgs...)
 	if selectErr != nil {
@@ -139,7 +163,6 @@ func (station *Station) Get(request *gondulapi.Request) gondulapi.Result {
 	if !idExists || id == "" {
 		return gondulapi.Result{Code: 400, Message: "missing ID"}
 	}
-	userToken, userTokenOk := request.QueryArgs["user-token"]
 
 	found, err := db.Select(station, "stations", "id", "=", id)
 	if err != nil {
@@ -150,22 +173,19 @@ func (station *Station) Get(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	// Show credentials only if a user token matching the active timeslot was provided
+	userToken, userTokenOk := request.QueryArgs["user-token"]
 	credentials := station.Credentials
 	station.Credentials = ""
-	if userTokenOk && userToken != "" {
-		now := time.Now()
+	if userTokenOk && userToken != "" && station.TimeslotID != "" {
 		var timeslot Timeslot
-		timeslotFound, timeslotErr := db.Select(timeslot, "timeslots",
+		timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+			"id", "=", station.TimeslotID,
 			"user_token", "=", userToken,
-			"track", "=", station.TrackID,
-			"station_shortname", "=", station.Shortname,
-			"begin_time", "<=", now,
-			"end_time", ">=", now,
 		)
 		if timeslotErr != nil {
 			return gondulapi.Result{Error: timeslotErr}
 		}
-		if timeslotFound && timeslot.UserToken == userToken {
+		if timeslotFound {
 			station.Credentials = credentials
 		}
 	}
@@ -311,20 +331,39 @@ func (station *Station) validate() gondulapi.Result {
 		return gondulapi.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 
+	if station.TimeslotID != "" {
+		timeslotID, timeslotIDErr := uuid.Parse(station.TimeslotID)
+		if timeslotIDErr != nil {
+			return gondulapi.Result{Code: 400, Message: "invalid timeslot ID"}
+		}
+		timeslot := TimeslotForAdmins{ID: &timeslotID}
+		if exists, err := timeslot.existsWithTrack(station.TrackID); err != nil {
+			return gondulapi.Result{Error: err}
+		} else if !exists {
+			return gondulapi.Result{Code: 400, Message: "referenced timeslot does not exist or has wrong track type"}
+		}
+	}
+
+	if station.TimeslotID != "" {
+		if exists, err := station.existsTimeslot(); err != nil {
+			return gondulapi.Result{Error: err}
+		} else if exists {
+			return gondulapi.Result{Code: 400, Message: "another station is already bound to the referenced timeslot"}
+		}
+	}
+
 	return gondulapi.Result{}
 }
 
 func (station *Station) validateStatus() bool {
 	switch station.Status {
-	case stationStatusPreparing:
+	case StationStatusActive:
 		fallthrough
-	case stationStatusActive:
+	case StationStatusDirty:
 		fallthrough
-	case stationStatusDirty:
+	case StationStatusTerminated:
 		fallthrough
-	case stationStatusTerminated:
-		fallthrough
-	case stationStatusMaintenance:
+	case StationStatusMaintenance:
 		return true
 	default:
 		return false
@@ -341,13 +380,32 @@ func (station *Station) existsTrackShortname() (bool, error) {
 	return count > 0, nil
 }
 
-// Post attempts to create a new station, if the track supports it.
+func (station *Station) existsTimeslot() (bool, error) {
+	var count int
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE id != $1 AND timeslot = $2", station.ID, station.TimeslotID)
+	rowErr := row.Scan(&count)
+	if rowErr != nil {
+		return false, rowErr
+	}
+	return count > 0, nil
+}
+
+// Post attempts to manually create a new station, if the track supports it.
 func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) gondulapi.Result {
 	trackID, trackIDExists := request.PathArgs["track_id"]
 	if !trackIDExists || trackID == "" {
 		return gondulapi.Result{Code: 400, Message: "missing track ID"}
 	}
 
+	var station Station
+	return station.Provision(trackID)
+}
+
+// Provision attempts to allocate a station, if the track supports it.
+// The receiver station will get overwritten with the created station,
+// plus the result will contain the location of the newly created station.
+func (station *Station) Provision(trackID string) gondulapi.Result {
+	// Load track
 	var track Track
 	found, selectErr := db.Select(&track, "tracks", "id", "=", trackID)
 	if selectErr != nil {
@@ -363,13 +421,13 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 	}
 	trackConfig, trackConfigOk := gondulapi.Config.ServerTracks[trackID]
 	if !trackConfigOk || trackConfig.BaseURL == "" {
-		return gondulapi.Result{Code: 400, Message: "track type is not configured for dynamic stations"}
+		return gondulapi.Result{Code: 400, Message: "track is not configured for dynamic stations"}
 	}
 
 	// Check limit, excluding terminated ones
 	maxStations := trackConfig.MaxInstances
 	if maxStations > 0 {
-		currentRow := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE track = $1 AND status != $2", track.ID, stationStatusTerminated)
+		currentRow := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE track = $1 AND status != $2", track.ID, StationStatusTerminated)
 		var count int
 		currentRowErr := currentRow.Scan(&count)
 		if currentRowErr != nil {
@@ -381,19 +439,40 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 	}
 
 	// Call station service
-	serviceData, serviceCallErr := createRequest.callService(trackConfig)
-	if serviceCallErr != nil {
-		return gondulapi.Result{Error: serviceCallErr}
+	serviceURL := trackConfig.BaseURL + "/api/entry/new"
+	serviceBody := []byte(`{"username":"tech","uid":"gondulapi","task_type":"1"}`)
+	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(serviceBody))
+	if serviceRequestErr != nil {
+		return gondulapi.Result{Error: serviceRequestErr}
 	}
+	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
+	serviceRequest.Header.Set("Content-Type", "application/json")
+	serviceClient := &http.Client{}
+	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
+	if serviceResponseErr != nil {
+		return gondulapi.Result{Error: serviceResponseErr}
+	}
+	defer serviceResponse.Body.Close()
+	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
+		return gondulapi.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+	}
+	serviceResponseBody, serviceResponseBodyErr := ioutil.ReadAll(serviceResponse.Body)
+	if serviceResponseBodyErr != nil {
+		return gondulapi.Result{Error: serviceResponseBodyErr}
+	}
+	var serviceData serverCreateStationResponse
+	if err := json.Unmarshal(serviceResponseBody, &serviceData); err != nil {
+		return gondulapi.Result{Error: err}
+	}
+	log.Tracef("VM service created new instance: %v", serviceData.ID)
 
 	// Create station
-	var station Station
 	newID := uuid.New()
 	station.ID = &newID
 	station.TrackID = trackID
 	station.Shortname = strconv.Itoa(serviceData.ID)
 	station.Name = serviceData.FQDN
-	station.Status = stationStatusPreparing
+	station.Status = StationStatusMaintenance
 	station.Credentials = fmt.Sprintf("Username: %v\nPassword: %v\nPublic IPv4 address: %v\nPublic IPv6 address: %v\nSSH port: %v",
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
 	station.Notes = fmt.Sprintf("FQDN: %v\nZone: %v\nVLAN ID: %v\nVLAN IPv4 Subnet: %v",
@@ -412,41 +491,7 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 	return result
 }
 
-func (createRequest *StationProvisionRequest) callService(trackConfig gondulapi.ServerTrackConfig) (*serverCreateStationResponse, error) {
-	createURL := trackConfig.BaseURL + "/api/entry/new"
-	var body = []byte(`{"username":"tech","uid":"gondulapi","task_type":"1"}`)
-	request, requestErr := http.NewRequest("POST", createURL, bytes.NewBuffer(body))
-	if requestErr != nil {
-		return nil, requestErr
-	}
-	request.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
-	request.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	response, responseErr := client.Do(request)
-	if responseErr != nil {
-		return nil, responseErr
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return nil, fmt.Errorf("response contained non-2XX status: %v", response.Status)
-	}
-
-	responseBody, responseBodyErr := ioutil.ReadAll(response.Body)
-	if responseBodyErr != nil {
-		return nil, responseBodyErr
-	}
-	var responseData serverCreateStationResponse
-	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		return nil, err
-	}
-
-	log.Tracef("VM service created new instance: %v", responseData.ID)
-
-	return &responseData, nil
-}
-
-// Post attempts to destroy a station, if the track supports it.
+// Post attempts to manually destroy a station, if the track supports it.
 func (destroyRequest *StationTerminateRequest) Post(request *gondulapi.Request) gondulapi.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
@@ -461,6 +506,17 @@ func (destroyRequest *StationTerminateRequest) Post(request *gondulapi.Request) 
 	}
 	if !stationFound {
 		return gondulapi.Result{Code: 404, Message: "not found"}
+	}
+
+	return station.Terminate()
+}
+
+// Terminate attempts to destroy a station, if the track supports it.
+// The receiver station should already be loaded and exist in the database.
+func (station *Station) Terminate() gondulapi.Result {
+	// Check if already terminated
+	if station.Status == StationStatusTerminated {
+		return gondulapi.Result{Code: 400, Message: "station already terminated"}
 	}
 
 	// Get track
@@ -483,37 +539,28 @@ func (destroyRequest *StationTerminateRequest) Post(request *gondulapi.Request) 
 	}
 
 	// Call station service
-	serviceCallErr := destroyRequest.callService(&station, trackConfig)
-	if serviceCallErr != nil {
-		return gondulapi.Result{Error: serviceCallErr}
+	serviceURL := fmt.Sprintf("%v/api/entry/%v", trackConfig.BaseURL, station.Shortname)
+	serviceRequest, serviceRequestErr := http.NewRequest("DELETE", serviceURL, nil)
+	if serviceRequestErr != nil {
+		return gondulapi.Result{Error: serviceRequestErr}
 	}
+	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
+	serviceClient := &http.Client{}
+	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
+	if serviceResponseErr != nil {
+		return gondulapi.Result{Error: serviceResponseErr}
+	}
+	defer serviceResponse.Body.Close()
+	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
+		return gondulapi.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+	}
+	log.Tracef("VM service destroyed instance: %v", station.ID)
 
-	// Change state to terminated
-	station.Status = stationStatusTerminated
+	// Change state to terminated and remove any assigned timeslot
+	station.Status = StationStatusTerminated
+	station.TimeslotID = ""
+
 	result, err := db.Update("stations", station, "id", "=", station.ID)
 	result.Error = err
 	return result
-}
-
-func (destroyRequest *StationTerminateRequest) callService(station *Station, trackConfig gondulapi.ServerTrackConfig) error {
-	destroyURL := fmt.Sprintf("%v/api/entry/%v", trackConfig.BaseURL, station.Shortname)
-	request, requestErr := http.NewRequest("DELETE", destroyURL, nil)
-	if requestErr != nil {
-		return requestErr
-	}
-	request.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
-
-	client := &http.Client{}
-	response, responseErr := client.Do(request)
-	if responseErr != nil {
-		return responseErr
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return fmt.Errorf("response contained non-2XX status: %v", response.Status)
-	}
-
-	log.Tracef("VM service destroyed instance: %v", station.ID)
-
-	return nil
 }

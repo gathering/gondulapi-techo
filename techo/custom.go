@@ -98,7 +98,7 @@ func (t4 *StationTasksTests) Get(request *gondulapi.Request) gondulapi.Result {
 	}()
 	for testsRows.Next() {
 		var test Test
-		rowErr := testsRows.Scan(&test.ID, &test.TrackID, &test.TaskShortname, &test.Shortname, &test.StationShortname, &test.Timeslot, &test.Name, &test.Description, &test.Sequence, &test.Timestamp, &test.StatusSuccess, &test.StatusDescription)
+		rowErr := testsRows.Scan(&test.ID, &test.TrackID, &test.TaskShortname, &test.Shortname, &test.StationShortname, &test.TimeslotID, &test.Name, &test.Description, &test.Sequence, &test.Timestamp, &test.StatusSuccess, &test.StatusDescription)
 		if rowErr != nil {
 			return gondulapi.Result{Error: rowErr}
 		}

@@ -40,15 +40,15 @@
 | - | - | - | - |
 | `/tracks/[?type=<>]` | `GET` | Get tracks. | Public. |
 | `/track/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a track. | Public (read) and admin. |
+| `/track/<id>/provision-station` | `POST` | Manually provision a station for a the track (server track), which will enter the maintenance state to avoid being assigned. | Admin. |
 
 ### Stations
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/stations/[?track=<>][&shortname=<>][&status=<>][&user-token=<>]` | `GET` | Get stations. | Public (read without credentials). |
+| `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-token=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user token. | Public (read without credentials). |
 | `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
-| `/track/<track-id>/provision-station` | `POST` | Provision a station for a track (server track). | Admin. |
-| `/station/<id>/terminate` | `POST` | Terminate a station (server track). The station will be markled as terminated (not deleted). | Admin. |
+| `/station/<id>/terminate` | `POST` | Manually terminate a station (server track). The station will be markled as terminated (not deleted). | Admin. |
 | `/admin/stations/[?track=<>][&shortname=<>][&status=<>]` | `GET` | Get stations with credentials. | Public (read without credentials) and admin. |
 
 ### Timeslots
@@ -58,8 +58,11 @@ Timeslots are the participation objects for a user and a track. The start time, 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
 | `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
-| `/timeslot/[id][?user-token=<>]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Public (secret user token). |
-| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&state={unassigned\|active}]` | `GET` | Get timeslots. | Admin. |
+| `/timeslot/[id][?user-token=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
+| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&no-time][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
+| `/admin/timeslot/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Admin. |
+| `/admin/timeslot/<id>/assign-station/` | `POST` | Attempts to find an available station (state ready or provision new) and bind it to the timeslot. May provision new stations (server track). It sets the begin time to now and end time a 1000 years into the future. | Admin. |
+| `/admin/timeslot/<id>/finish/` | `POST` | End the timeslot and make the station dirty/terminated. It sets the end time to now. | Admin. |
 
 ### Tasks
 
@@ -72,23 +75,134 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST`, `DELETE` | Get/post/delete tests. | Public (read) and admin. |
+| `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST`, `DELETE` | Get/post/delete tests. If using mass delete, consider making a backup first as a misspelled query arg can nuke the entire table. | Public (read) and admin. |
 | `/test/[id]` | `GET`, `POST`, `DELETE` | Get/post/delete a test. | Public (read) and admin. |
+
+## Useful Requests
+
+**Show dirty net track stations**:
+
+`curl "https://techo.gathering.org/api/stations/?track=net&status=dirty&pretty"`
+
+**Show timeslots without times (new registration)**:
+
+`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?no-time&pretty"`
+
+**Show timeslots with stations (currently in use)**:
+
+`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?assigned-station&pretty"`
+
+**Show timeslots with times and waiting for stations**:
+
+`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
 
 ## Examples
 
-### Provision And Terminate Dynamic Server Stations
+### User Registration (User)
+
+Should be called every time the user logs in. It's idempotent. Note that it's possible to just make a fake user by generating a UUID, the frontend auth part is mostly just for convenience.
+
+```
+$ curl -D - https://techo.gathering.org/api/user/396345b4-553a-4254-97dc-778bea02a000/ -X PUT --data '{"token":"396345b4-553a-4254-97dc-778bea02a000","username":"hon5550","display_name":"Håvard5550","email_address":"hon5550@example.net"}'
+
+HTTP/1.1 200 OK
+...
+
+{"affected":1,"ok":1}
+```
+
+### Track Participant Registration (User)
+
+The user can have one active registration (aka timeslot) for each track. This is not idempotent, so check (GET timeslots with user token) if the user already has a registration for the track. The time and station allocation will be handled manually by crew. The participant should ask crew if it wishes to withdraw its registration or make changes to it.
+
+```
+$ curl -D - https://techo.gathering.org/api/timeslot/ --data '{"user_token":"396345b4-553a-4254-97dc-778bea02a000","track":"server"}'
+
+HTTP/1.1 201 Created
+Location: /api/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/
+...
+
+{"affected":1,"ok":1}
+```
+
+### Show Own Station With Credentials (User)
+
+Show the station assigned to a timeslot, after the crew has assigned one. Requires both the timeslot ID and user token. Returns a list containing zero or one stations.
+
+```
+$ curl -D - https://techo.gathering.org/api/stations/\?timeslot\=75dff19e-6305-4b9a-883d-1bd6f6b60616\&user-token\=396345b4-553a-4254-97dc-778bea02a000\&pretty
+
+HTTP/1.1 200 OK
+
+[
+  {
+    "id": "1ec64ed3-8cce-48f1-b094-c078cf83480e",
+    "track": "server",
+    "shortname": "23",
+    "name": "vm-knnwpgsi.techo.no",
+    "status": "maintenance",
+    "credentials": "Username: tech\nPassword: akuOfYL4Aw\nPublic IPv4 address: 185.80.182.120\nPublic IPv6 address: 2a02:d140:c012:41::6\nSSH port: 20005",
+    "notes": "FQDN: vm-knnwpgsi.techo.no\nZone: zone-knnwpgsi.techo.no\nVLAN ID: 1054\nVLAN IPv4 Subnet: 10.10.54.2/24",
+    "timeslot": "75dff19e-6305-4b9a-883d-1bd6f6b60616"
+  }
+]
+```
+
+### Set Tentative Time for Participant (Admin)
+
+The time is shown to the user and helps the crew organize delegation of stations, but generally has no effect when it comes to internal backend logic (i.e. stations may be assigned with wrong or no time for a timeslot). Finishing a timeslot via the "finish" endpoint will automatically set the end time (and begin time if not set) to now, so setting it e.g. to year 3000 is a useful way to indicate that the timeslot isn't finished yet. And end time that has passed will allow the user to register for a new time slot.
+
+```
+$ curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslot/a6d525e5-34c5-45c1-954b-e8c747779655" -X PUT --data '{
+  "id": "a6d525e5-34c5-45c1-954b-e8c747779655",
+  "user_token": "396345b4-553a-4254-97dc-778bea02a86a",
+  "track": "server",
+  "begin_time": "2021-04-01T10:00:00+02:00",
+  "end_time": "3000-01-01T00:00:00+02:00"
+}'
+
+{"affected":1,"ok":1}
+```
+
+### Assign Station to Participant (Admin)
+
+If there is a station available (state "active") or if one can be allocated (server track), this should automatically bind the station to the timeslot. Note that it may take a few seconds to complete if it has to allocate a server station (VM). It sets the begin time to now and end time a 1000 years into the future.
+
+```
+$ curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/assign-station/ --data ''
+
+HTTP/1.1 303 See Other
+Location: /api/station/1ec64ed3-8cce-48f1-b094-c078cf83480e/
+...
+
+{"affected":1,"ok":1}
+```
+
+### Finish a Time Slot (Admin)
+
+After a user is done with a station, doing this will end the time slot and either terminate the station (server track) or mark it as dirty so the crew may clean it (net track). It sets the end time to now, which allows the user to register a new time slot.
+
+```
+curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/finish/ --data ''
+
+HTTP/1.1 200 OK
+...
+
+{}
+```
+
+### Manually Provision And Terminate Dynamic Server Stations (Admin)
+
+This is generally only needed for cleanup when something went wrong. The timeslot endpoints also manage dynamic server stations and is recommended to use instead if possible.
 
 **Provision**:
 
 ```
-$ curl -D - http://localhost:8080/api/track/server/provision-station --data ''
+$ curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/track/server/provision-station --data ''
+
 HTTP/1.1 201 Created
-Content-Type: application/json; charset=utf-8
-Etag: 2cc55706087bee87cdfc23b307a16b6d8ff92936cab78d62ccc73a1781118114
 Location: /api/station/303485ed-9d10-4558-a402-1f345ce12855
-Date: Tue, 30 Mar 2021 19:09:33 GMT
-Content-Length: 33
+...
 
 {"Affected":1,"Ok":1,"Failed":0}
 ```
@@ -98,12 +212,10 @@ Follow or parse the `Location` header for info about the created resource.
 **Terminate**:
 
 ```
-$ curl -D - http://localhost:8080/api/station/303485ed-9d10-4558-a402-1f345ce12855/terminate --data ''
+$ curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/station/303485ed-9d10-4558-a402-1f345ce12855/terminate --data ''
+
 HTTP/1.1 200 OK
-Content-Type: application/json; charset=utf-8
-Etag: 2cc55706087bee87cdfc23b307a16b6d8ff92936cab78d62ccc73a1781118114
-Date: Tue, 30 Mar 2021 19:09:56 GMT
-Content-Length: 33
+...
 
 {"Affected":1,"Ok":1,"Failed":0}
 

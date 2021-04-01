@@ -40,7 +40,6 @@ type DocumentFamilies []*DocumentFamily
 
 // Document is a document.
 type Document struct {
-	// ID            *uuid.UUID `column:"id" json:"id"`               // Generated, required, unique
 	FamilyID      string     `column:"family" json:"family"`       // Required
 	Shortname     string     `column:"shortname" json:"shortname"` // Required, unique with family ID
 	Name          string     `column:"name" json:"name"`
@@ -256,6 +255,7 @@ func (document *Document) Get(request *gondulapi.Request) gondulapi.Result {
 func (document *Document) Post(request *gondulapi.Request) gondulapi.Result {
 	now := time.Now()
 	document.LastChange = &now
+
 	if result := document.validate(); result.HasErrorOrCode() {
 		return result
 	}
@@ -287,6 +287,10 @@ func (document *Document) Put(request *gondulapi.Request) gondulapi.Result {
 
 	now := time.Now()
 	document.LastChange = &now
+
+	if result := document.validate(); result.HasErrorOrCode() {
+		return result
+	}
 
 	return document.createOrUpdate()
 }

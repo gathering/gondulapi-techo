@@ -70,6 +70,7 @@ CREATE TABLE public.stations (
     status text NOT NULL,
     credentials text NOT NULL,
     notes text NOT NULL,
+    timeslot text NOT NULL,
     UNIQUE (track, shortname)
 );
 CREATE UNIQUE INDEX public_stations_id_index ON public.stations (id);
@@ -79,7 +80,6 @@ CREATE TABLE public.timeslots (
     id text NOT NULL UNIQUE,
     user_token text NOT NULL,
     track text NOT NULL,
-    station_shortname text NOT NULL,
     begin_time timestamp with time zone,
     end_time timestamp with time zone
 );
