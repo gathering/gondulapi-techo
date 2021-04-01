@@ -60,7 +60,7 @@ Timeslots are the participation objects for a user and a track. The start time, 
 | - | - | - | - |
 | `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
 | `/timeslot/[id][?user-token=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
-| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&no-time][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
+| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
 | `/admin/timeslot/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Admin. |
 | `/admin/timeslot/<id>/assign-station/` | `POST` | Attempts to find an available station (state ready or provision new) and bind it to the timeslot. May provision new stations (server track). It sets the begin time to now and end time a 1000 years into the future. | Admin. |
 | `/admin/timeslot/<id>/finish/` | `POST` | End the timeslot and make the station dirty/terminated. It sets the end time to now. | Admin. |

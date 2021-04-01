@@ -74,32 +74,34 @@ func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.R
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
 	}
-	if _, ok := request.QueryArgs["no-time"]; ok {
-		whereArgs = append(whereArgs, "begin_time", "IS", nil)
-	}
-	if _, ok := request.QueryArgs["not-ended"]; ok {
-		whereArgs = append(whereArgs, "end_time", ">=", now)
-	}
 
 	selectErr := db.SelectMany(timeslots, "timeslots", whereArgs...)
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}
 	}
 
-	// Check for every one if a station is assigned to it (expensive)
+	// Post-fetch filtering (expensive and easy to do in SQL but hard with DB layer)
+	_, notEnded := request.QueryArgs["not-ended"]
 	_, assignedStation := request.QueryArgs["assigned-station"]
 	_, notAssignedStation := request.QueryArgs["not-assigned-station"]
-	if (assignedStation || notAssignedStation) && assignedStation != notAssignedStation {
+	if notEnded || assignedStation || notAssignedStation {
 		oldTimeslots := *timeslots
 		*timeslots = make(TimeslotsForAdmins, 0)
 		for _, timeslot := range oldTimeslots {
-			exist, err := timeslot.stationsExistWithThis()
+			stationsExist, err := timeslot.stationsExistWithThis()
 			if err != nil {
 				return gondulapi.Result{Error: err}
 			}
-			if (exist && assignedStation) || (!exist && notAssignedStation) {
-				*timeslots = append(*timeslots, timeslot)
+			if assignedStation && !stationsExist {
+				continue
 			}
+			if notAssignedStation && stationsExist {
+				continue
+			}
+			if notEnded && timeslot.EndTime != nil && timeslot.EndTime.Before(now) {
+				continue
+			}
+			*timeslots = append(*timeslots, timeslot)
 		}
 	}
 
