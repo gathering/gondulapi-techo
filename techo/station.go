@@ -65,8 +65,11 @@ type Station struct {
 // Stations is a list of stations.
 type Stations []*Station
 
+// StationForAdmins is a station, accessible only by admins.
+type StationForAdmins Station
+
 // StationsForAdmins is a list of stations, accessible only by admins.
-type StationsForAdmins Stations
+type StationsForAdmins []*StationForAdmins
 
 // StationProvisionRequest is a request to allocate a new station for the specified track, if the track supports it.
 type StationProvisionRequest struct {
@@ -90,47 +93,12 @@ type serverCreateStationResponse struct {
 }
 
 func init() {
-	receiver.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
-	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
 	receiver.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
+	receiver.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
+	receiver.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
+	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
 	receiver.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
 	receiver.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
-}
-
-// Get gets multiple stations.
-func (stations *Stations) Get(request *gondulapi.Request) gondulapi.Result {
-	// Fetch through admin endpoint (with credentials)
-	stationsForAdmins := StationsForAdmins{}
-	stationsForAdminsResult := stationsForAdmins.Get(request)
-	if stationsForAdminsResult.HasErrorOrCode() {
-		return stationsForAdminsResult
-	}
-
-	// Copy and hide credentials
-	_, timeslotIDOk := request.QueryArgs["timeslot"]
-	userToken, userTokenOk := request.QueryArgs["user-token"]
-	for _, station := range stationsForAdmins {
-		credentials := station.Credentials
-		station.Credentials = ""
-		// If filtering by timeslot and user token, show credentials if correct user token
-		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
-			var timeslot Timeslot
-			timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
-				"id", "=", station.TimeslotID,
-				"user_token", "=", userToken,
-			)
-			if timeslotErr != nil {
-				return gondulapi.Result{Error: timeslotErr}
-			}
-			if timeslotFound {
-				station.Credentials = credentials
-			}
-		}
-
-		*stations = append(*stations, station)
-	}
-
-	return gondulapi.Result{}
 }
 
 // Get gets multiple stations. For admins.
@@ -152,6 +120,61 @@ func (stations *StationsForAdmins) Get(request *gondulapi.Request) gondulapi.Res
 	selectErr := db.SelectMany(stations, "stations", whereArgs...)
 	if selectErr != nil {
 		return gondulapi.Result{Error: selectErr}
+	}
+
+	return gondulapi.Result{}
+}
+
+// Get gets multiple stations.
+func (stations *Stations) Get(request *gondulapi.Request) gondulapi.Result {
+	// Fetch through admin endpoint (with credentials)
+	stationsForAdmins := StationsForAdmins{}
+	stationsForAdminsResult := stationsForAdmins.Get(request)
+	if stationsForAdminsResult.HasErrorOrCode() {
+		return stationsForAdminsResult
+	}
+
+	// Copy and hide credentials
+	_, timeslotIDOk := request.QueryArgs["timeslot"]
+	userToken, userTokenOk := request.QueryArgs["user-token"]
+	for _, stationForAdmins := range stationsForAdmins {
+		station := Station(*stationForAdmins)
+		credentials := station.Credentials
+		station.Credentials = ""
+		// If filtering by timeslot and user token, show credentials if correct user token
+		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
+			var timeslot Timeslot
+			timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+				"id", "=", station.TimeslotID,
+				"user_token", "=", userToken,
+			)
+			if timeslotErr != nil {
+				return gondulapi.Result{Error: timeslotErr}
+			}
+			if timeslotFound {
+				station.Credentials = credentials
+			}
+		}
+
+		*stations = append(*stations, &station)
+	}
+
+	return gondulapi.Result{}
+}
+
+// Get gets a single station. For admins.
+func (station *StationForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+	id, idExists := request.PathArgs["id"]
+	if !idExists || id == "" {
+		return gondulapi.Result{Code: 400, Message: "missing ID"}
+	}
+
+	found, err := db.Select(station, "stations", "id", "=", id)
+	if err != nil {
+		return gondulapi.Result{Error: err}
+	}
+	if !found {
+		return gondulapi.Result{Code: 404, Message: "not found"}
 	}
 
 	return gondulapi.Result{}

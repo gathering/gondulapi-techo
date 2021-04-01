@@ -47,9 +47,10 @@
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
 | `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-token=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user token. | Public (read without credentials). |
-| `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
-| `/station/<id>/terminate` | `POST` | Manually terminate a station (server track). The station will be markled as terminated (not deleted). | Admin. |
 | `/admin/stations/[?track=<>][&shortname=<>][&status=<>]` | `GET` | Get stations with credentials. | Public (read without credentials) and admin. |
+| `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
+| `/admin/station/[id]` | `GET` | Get a station with credentials. | Admin. |
+| `/station/<id>/terminate` | `POST` | Manually terminate a station (server track). The station will be markled as terminated (not deleted). | Admin. |
 
 ### Timeslots
 
@@ -196,6 +197,25 @@ HTTP/1.1 200 OK
 ...
 
 {}
+```
+
+### Update Station (Admin)
+
+When station details changes, e.g. when a net station timeslot has finished and the station has status "dirty" and needs new credentials (do this AFTER resetting the station). Note that the the GET uses "/admin/" (to get credentials) and PUT doesn't (because the endpoint doesn't exist).
+
+**Get existing station**:
+
+```
+$ curl https://techo.gathering.org/api/admin/station/1932481b-4126-4cf3-8913-49d0faff75f5/
+{"id":"1932481b-4126-4cf3-8913-49d0faff75f5","track":"net","shortname":"2","name":"Station #2","status":"dirty","credentials":"ssh address, username, whatever, old secret password","notes":"","timeslot":""}
+
+```
+
+**Update existing station**:
+
+```
+$ curl https://techo.gathering.org/api/station/1932481b-4126-4cf3-8913-49d0faff75f5/ -X PUT --data '{"id":"1932481b-4126-4cf3-8913-49d0faff75f5","track":"net","shortname":"2","name":"Station #2","status":"active","credentials":"ssh address, username, whatever, NEW secret password","notes":"","timeslot":""}'
+{"affected":1,"ok":1}
 ```
 
 ### Manually Provision And Terminate Dynamic Server Stations (Admin)
