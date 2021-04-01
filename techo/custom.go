@@ -27,6 +27,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// TrackStations consists of all stations for a track.
+type TrackStations struct {
+	ID       string    `json:"id"`
+	Type     TrackType `json:"type"`
+	Name     string    `json:"name"`
+	Stations Stations  `json:"stations"`
+}
+
 // StationTasksTests consists of all tasks and tests for a track and station.
 type StationTasksTests struct {
 	ID               string                   `json:"id"`
@@ -46,7 +54,38 @@ type stationTasksTestsTask struct {
 }
 
 func init() {
+	receiver.AddHandler("/custom/track-stations/", "^(?P<track_id>[^/]+)/$", func() interface{} { return &TrackStations{} })
 	receiver.AddHandler("/custom/station-tasks-tests/", "^(?P<track_id>[^/]+)/(?P<station_shortname>[^/]+)/$", func() interface{} { return &StationTasksTests{} })
+}
+
+// Get creates a a big mess of data consisting of a track and all active stations for it.
+func (trackAndStations *TrackStations) Get(request *gondulapi.Request) gondulapi.Result {
+	trackID, trackIDExists := request.PathArgs["track_id"]
+	if !trackIDExists || trackID == "" {
+		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+	}
+
+	// Scan track
+	var track Track
+	trackRow := db.DB.QueryRow("SELECT id,type,name FROM tracks WHERE id = $1", trackID)
+	trackErr := trackRow.Scan(&track.ID, &track.Type, &track.Name)
+	if trackErr != nil {
+		return gondulapi.Result{Error: trackErr}
+	}
+	trackAndStations.ID = track.ID
+	trackAndStations.Type = track.Type
+	trackAndStations.Name = track.Name
+
+	// Scan stations
+	stationsErr := db.SelectMany(&trackAndStations.Stations, "stations",
+		"track", "=", track.ID,
+		"status", "=", StationStatusActive,
+	)
+	if stationsErr != nil {
+		return gondulapi.Result{Error: stationsErr}
+	}
+
+	return gondulapi.Result{}
 }
 
 // Get creates a a big mess of data which is perfect for the current frontend because we may not have time to improve it.
