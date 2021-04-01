@@ -130,7 +130,7 @@ func (t4 *StationTasksTests) Get(request *gondulapi.Request) gondulapi.Result {
 
 	// Scan tests
 	tests := make([]Test, 0)
-	testsRows, testsQueryErr := db.DB.Query("SELECT id,track,task_shortname,shortname,station_shortname,timeslot,name,description,sequence,timestamp,status_success,status_description FROM tests WHERE track = $1 AND station_shortname = $2 AND timeslot IS NULL ORDER BY sequence ASC",
+	testsRows, testsQueryErr := db.DB.Query("SELECT id,track,task_shortname,shortname,station_shortname,timeslot,name,description,sequence,timestamp,status_success,status_description FROM tests WHERE track = $1 AND station_shortname = $2 AND timeslot = '' ORDER BY sequence ASC",
 		trackID, stationShortname)
 	if testsQueryErr != nil {
 		return gondulapi.Result{Error: testsQueryErr}
