@@ -511,6 +511,7 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 
 	// Take station and save
 	station.TimeslotID = timeslot.ID.String()
+	station.Status = StationStatusActive
 	if result := station.createOrUpdate(); result.HasErrorOrCode() {
 		return result
 	}

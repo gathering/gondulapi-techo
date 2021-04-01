@@ -404,6 +404,7 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 // Provision attempts to allocate a station, if the track supports it.
 // The receiver station will get overwritten with the created station,
 // plus the result will contain the location of the newly created station.
+// The status will be "maintenance".
 func (station *Station) Provision(trackID string) gondulapi.Result {
 	// Load track
 	var track Track

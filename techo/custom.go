@@ -84,6 +84,9 @@ func (trackAndStations *TrackStations) Get(request *gondulapi.Request) gondulapi
 	if stationsErr != nil {
 		return gondulapi.Result{Error: stationsErr}
 	}
+	for _, station := range trackAndStations.Stations {
+		station.Credentials = ""
+	}
 
 	return gondulapi.Result{}
 }
