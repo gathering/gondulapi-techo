@@ -501,7 +501,7 @@ func (station *Station) Provision(trackID string) gondulapi.Result {
 	station.Credentials = fmt.Sprintf("**Username**: %v\n\n**Password**: %v\n\n**Public address (IPv4)**: %v\n\n**Public address (IPv6)**: %v\n\n**SSH port**: %v",
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
 	// Markdown
-	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Subnet (IPv4)**: %v",
+	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Subnet (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
 		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
