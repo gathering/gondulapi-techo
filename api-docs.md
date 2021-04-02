@@ -177,7 +177,7 @@ $ curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslot/a6d525e5-34
 If there is a station available (state "active") or if one can be allocated (server track), this should automatically bind the station to the timeslot. Note that it may take a few seconds to complete if it has to allocate a server station (VM). It sets the begin time to now and end time a 1000 years into the future.
 
 ```
-$ curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/assign-station/ --data ''
+$ curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/admin/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/assign-station/ --data ''
 
 HTTP/1.1 303 See Other
 Location: /api/station/1ec64ed3-8cce-48f1-b094-c078cf83480e/
@@ -191,7 +191,7 @@ Location: /api/station/1ec64ed3-8cce-48f1-b094-c078cf83480e/
 After a user is done with a station, doing this will end the time slot and either terminate the station (server track) or mark it as dirty so the crew may clean it (net track). It sets the end time to now, which allows the user to register a new time slot.
 
 ```
-curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/finish/ --data ''
+curl -u "<HIDDEN>" -D - https://techo.gathering.org/api/admin/timeslot/75dff19e-6305-4b9a-883d-1bd6f6b60616/finish/ --data ''
 
 HTTP/1.1 200 OK
 ...
@@ -246,4 +246,18 @@ HTTP/1.1 200 OK
 
 {"Affected":1,"Ok":1,"Failed":0}
 
+```
+
+### Manual DB Queries
+
+**Show users assigned to stations**:
+
+```
+select u.username, u.display_name, s.track, s.shortname as station from stations as s join timeslots as t on s.timeslot = t.id join users as u on u.token = t.user_token;
+```
+
+**Show timeslots waiting for station**:
+
+```
+select t.track, u.username, u.display_name, t.notes, t.id as timeslot from timeslots as t join users as u on t.user_token = u.token left join stations as s on t.id = s.timeslot where (t.end_time is null or t.end_time > now()) and s.timeslot is null order by t.track asc;
 ```

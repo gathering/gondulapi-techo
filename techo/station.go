@@ -495,11 +495,11 @@ func (station *Station) Provision(trackID string) gondulapi.Result {
 	station.ID = &newID
 	station.TrackID = trackID
 	station.Shortname = strconv.Itoa(serviceData.ID)
-	station.Name = serviceData.FQDN
+	station.Name = fmt.Sprintf("Station #%v", serviceData.ID)
 	station.Status = StationStatusMaintenance
-	station.Credentials = fmt.Sprintf("Username: %v\nPassword: %v\nPublic IPv4 address: %v\nPublic IPv6 address: %v\nSSH port: %v",
+	station.Credentials = fmt.Sprintf("Username: %v\n\nPassword: %v\n\nPublic IPv4 address: %v\n\nPublic IPv6 address: %v\n\nSSH port: %v",
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
-	station.Notes = fmt.Sprintf("FQDN: %v\nZone: %v\nVLAN ID: %v\nVLAN IPv4 Subnet: %v",
+	station.Notes = fmt.Sprintf("FQDN: %v\n\nZone: %v\n\nVLAN ID: %v\n\nVLAN IPv4 Subnet: %v",
 		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
