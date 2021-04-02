@@ -497,9 +497,11 @@ func (station *Station) Provision(trackID string) gondulapi.Result {
 	station.Shortname = strconv.Itoa(serviceData.ID)
 	station.Name = fmt.Sprintf("Station #%v", serviceData.ID)
 	station.Status = StationStatusMaintenance
-	station.Credentials = fmt.Sprintf("Username: %v\n\nPassword: %v\n\nPublic IPv4 address: %v\n\nPublic IPv6 address: %v\n\nSSH port: %v",
+	// Markdown
+	station.Credentials = fmt.Sprintf("**Username**: %v\n\n**Password**: %v\n\n**Public address (IPv4)**: %v\n\n**Public address (IPv6)**: %v\n\n**SSH port**: %v",
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
-	station.Notes = fmt.Sprintf("FQDN: %v\n\nZone: %v\n\nVLAN ID: %v\n\nVLAN IPv4 Subnet: %v",
+	// Markdown
+	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Subnet (IPv4)**: %v",
 		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
