@@ -80,16 +80,16 @@ type StationTerminateRequest struct {
 }
 
 type serverCreateStationResponse struct {
-	ID             int    `json:"id"`
-	FQDN           string `json:"fqdn"`
-	Zone           string `json:"zone"`
-	Username       string `json:"orc_vm_username"`
-	Password       string `json:"orc_vm_password"`
-	IPv4Address    string `json:"public_ipv4"`
-	IPv6Address    string `json:"public_ipv6"`
-	SSHPort        int    `json:"ssh_port"`
-	VLANID         int    `json:"vlan_id"`
-	VLANIPv4Subnet string `json:"vlan_ip"`
+	ID              int    `json:"id"`
+	FQDN            string `json:"fqdn"`
+	Zone            string `json:"zone"`
+	Username        string `json:"orc_vm_username"`
+	Password        string `json:"orc_vm_password"`
+	IPv4Address     string `json:"public_ipv4"`
+	IPv6Address     string `json:"public_ipv6"`
+	SSHPort         int    `json:"ssh_port"`
+	VLANID          int    `json:"vlan_id"`
+	VLANIPv4Address string `json:"vlan_ip"`
 }
 
 func init() {
@@ -501,8 +501,8 @@ func (station *Station) Provision(trackID string) gondulapi.Result {
 	station.Credentials = fmt.Sprintf("**Username**: %v\n\n**Password**: %v\n\n**Public address (IPv4)**: %v\n\n**Public address (IPv6)**: %v\n\n**SSH port**: %v",
 		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
 	// Markdown
-	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Subnet (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
-		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Subnet)
+	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Address (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
+		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Address)
 	if result := station.validate(); result.HasErrorOrCode() {
 		return result
 	}

@@ -248,16 +248,6 @@ HTTP/1.1 200 OK
 
 ```
 
-### Manual DB Queries
+### Manual-ish DB Queries
 
-**Show users assigned to stations**:
-
-```
-select u.username, u.display_name, s.track, s.shortname as station from stations as s join timeslots as t on s.timeslot = t.id join users as u on u.token = t.user_token;
-```
-
-**Show timeslots waiting for station**:
-
-```
-select t.track, u.username, u.display_name, t.notes, t.id as timeslot from timeslots as t join users as u on t.user_token = u.token left join stations as s on t.id = s.timeslot where (t.end_time is null or t.end_time > now()) and s.timeslot is null order by t.track asc;
-```
+See `dev/print-*.sh` or pipe your own into `dev/db-cmd.sh`.
