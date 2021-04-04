@@ -1,10 +1,6 @@
 # Gondul API (Tech:Online Edition)
 
-A temporary gondulapi fork for Tech:Online.
-
-Note that it still uses the module name `github.com/gathering/gondulapi` even though this repo is called `gondulapi-techo`.
-
-(Forgive me for _temporarily_ converting the README to Md.)
+A temporary gondulapi fork for Tech:Online 2021.
 
 ## Description
 
@@ -54,6 +50,17 @@ update fields that are actually provided (if that is possible to detect!).
 ### Notes
 
 - Check linting errors: `golint ./...`
+
+## Desirable Changes
+
+(Written after the event.)
+
+- UUIDs are nice but not so nice to remember for manual API calls. Maybe find a way to support both UUIDs and composite keys (e.g. track ID + station shortname) in a clean way?
+- Make sure the `print-*.sh` scripts aren't needed.
+- Better authn/authz! OAuth2 and app tokens and stuff. No more separate "admin" endpoints. See the OAuth something branch. Not implemented this year because of limited time and considerable frontend changes required.
+- Split station state "active" into "ready" and "in-use" or something and move timeslot binding to timeslot.
+- Get rid of the temporary "custom" endpoints.
+- The DB-layer Select() is nice for dynamic "where"s but makes joins, sorting, limiting etc. kinda impossible. Maybe split out the build-where part and allow using it in manual SQL queries?
 
 ## Miscellanea
 
