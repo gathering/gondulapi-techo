@@ -61,6 +61,7 @@ update fields that are actually provided (if that is possible to detect!).
 - Split station state "active" into "ready" and "in-use" or something and move timeslot binding to timeslot.
 - Get rid of the temporary "custom" endpoints.
 - The DB-layer Select() is nice for dynamic "where"s but makes joins, sorting, limiting etc. kinda impossible. Maybe split out the build-where part and allow using it in manual SQL queries?
+- Key-value set of variables for each station (e.g. IP addresses for use in docs templating).
 
 ## Miscellanea
 
