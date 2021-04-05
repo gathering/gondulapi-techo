@@ -51,6 +51,10 @@ update fields that are actually provided (if that is possible to detect!).
 
 - Check linting errors: `golint ./...`
 
+## Miscellanea
+
+- This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
+
 ## Desirable Changes
 
 (Written after the event.)
@@ -62,7 +66,4 @@ update fields that are actually provided (if that is possible to detect!).
 - Get rid of the temporary "custom" endpoints.
 - The DB-layer Select() is nice for dynamic "where"s but makes joins, sorting, limiting etc. kinda impossible. Maybe split out the build-where part and allow using it in manual SQL queries?
 - Key-value set of variables for each station (e.g. IP addresses for use in docs templating).
-
-## Miscellanea
-
-- This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
+- Endpoints with PATCH semantics, e.g. for easily changing station attributes like state and credentials. Requires changes to gondulapi in order to support the PATCH method and for the DB layer to support both PUT and PATCH semantics.
