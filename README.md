@@ -1,4 +1,4 @@
-# Gondul API (Tech:Online Edition)
+# Gondul API (Tech:Online 2021 Edition)
 
 A temporary gondulapi fork for Tech:Online 2021.
 
