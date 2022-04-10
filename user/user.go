@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,12 +18,12 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package auth
 
 import (
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/receiver"
+	"github.com/gathering/tech-online-backend/rest"
 )
 
 // User reperesent a single user, including registry
@@ -48,7 +48,7 @@ func init() {
 }
 
 // Get gets multiple users.
-func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+func (users *UsersForAdmins) Get(request *rest.Request) rest.Result {
 	var whereArgs []interface{}
 	if username, ok := request.QueryArgs["token"]; ok {
 		whereArgs = append(whereArgs, "username", "=", username)
@@ -56,21 +56,21 @@ func (users *UsersForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
 
 	selectErr := db.SelectMany(users, "users", whereArgs...)
 	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+		return rest.Result{Error: selectErr}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Put updates a user.
-func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
+func (user *User) Put(request *rest.Request) rest.Result {
 	token, tokenExists := request.PathArgs["token"]
 	if !tokenExists || token == "" {
-		return gondulapi.Result{Code: 400, Message: "missing token"}
+		return rest.Result{Code: 400, Message: "missing token"}
 	}
 
 	if user.Token != token {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 	if result := user.validate(); result.HasErrorOrCode() {
 		return result
@@ -79,11 +79,11 @@ func (user *User) Put(request *gondulapi.Request) gondulapi.Result {
 	return user.createOrUpdate()
 }
 
-func (user *User) create() gondulapi.Result {
+func (user *User) create() rest.Result {
 	if exists, err := user.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
 	}
 
 	result, err := db.Insert("users", user)
@@ -91,10 +91,10 @@ func (user *User) create() gondulapi.Result {
 	return result
 }
 
-func (user *User) createOrUpdate() gondulapi.Result {
+func (user *User) createOrUpdate() rest.Result {
 	exists, existsErr := user.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Error: existsErr}
 	}
 
 	if exists {
@@ -118,25 +118,25 @@ func (user *User) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (user *User) validate() gondulapi.Result {
+func (user *User) validate() rest.Result {
 	switch {
 	case user.Token == "":
-		return gondulapi.Result{Code: 400, Message: "missing token"}
+		return rest.Result{Code: 400, Message: "missing token"}
 	case user.Username == "":
-		return gondulapi.Result{Code: 400, Message: "missing username"}
+		return rest.Result{Code: 400, Message: "missing username"}
 	case user.DisplayName == "":
-		return gondulapi.Result{Code: 400, Message: "missing display name"}
+		return rest.Result{Code: 400, Message: "missing display name"}
 	case user.EmailAddress == "":
-		return gondulapi.Result{Code: 400, Message: "missing email address"}
+		return rest.Result{Code: 400, Message: "missing email address"}
 	}
 
 	if exists, err := user.existsUsername(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	} else if exists {
-		return gondulapi.Result{Code: 409, Message: "username already exists"}
+		return rest.Result{Code: 409, Message: "username already exists"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 func (user *User) existsUsername() (bool, error) {

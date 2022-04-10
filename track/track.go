@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -23,9 +23,10 @@ package techo
 import (
 	"fmt"
 
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/receiver"
+	"github.com/gathering/tech-online-backend/rest"
 )
 
 // TrackType is track type.
@@ -52,7 +53,7 @@ func init() {
 }
 
 // Get gets multiple tracks.
-func (tracks *Tracks) Get(request *gondulapi.Request) gondulapi.Result {
+func (tracks *Tracks) Get(request *rest.Request) rest.Result {
 	var whereArgs []interface{}
 	if trackType, ok := request.QueryArgs["type"]; ok {
 		whereArgs = append(whereArgs, "type", "=", trackType)
@@ -60,40 +61,40 @@ func (tracks *Tracks) Get(request *gondulapi.Request) gondulapi.Result {
 
 	selectErr := db.SelectMany(tracks, "tracks", whereArgs...)
 	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+		return rest.Result{Error: selectErr}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets a single station.
-func (track *Track) Get(request *gondulapi.Request) gondulapi.Result {
+func (track *Track) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	found, err := db.Select(track, "tracks", "id", "=", id)
 	if err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	}
 	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post creates a new station.
-func (track *Track) Post(request *gondulapi.Request) gondulapi.Result {
+func (track *Track) Post(request *rest.Request) rest.Result {
 	if result := track.validate(); result.HasErrorOrCode() {
 		return result
 	}
 
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+		return rest.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
 	}
 
 	result := track.create()
@@ -102,19 +103,19 @@ func (track *Track) Post(request *gondulapi.Request) gondulapi.Result {
 	}
 
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/track/%v/", gondulapi.Config.SitePrefix, track.ID)
+	result.Location = fmt.Sprintf("%v/track/%v/", config.Config.SitePrefix, track.ID)
 	return result
 }
 
 // Put updates a station.
-func (track *Track) Put(request *gondulapi.Request) gondulapi.Result {
+func (track *Track) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
 	if track.ID != id {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 	if result := track.validate(); result.HasErrorOrCode() {
 		return result
@@ -122,29 +123,29 @@ func (track *Track) Put(request *gondulapi.Request) gondulapi.Result {
 
 	exists, existsErr := track.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Error: existsErr}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	return track.createOrUpdate()
 }
 
 // Delete deletes a station.
-func (track *Track) Delete(request *gondulapi.Request) gondulapi.Result {
+func (track *Track) Delete(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
 	track.ID = id
 	exists, err := track.exists()
 	if err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Error: err}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
 	result, err := db.Delete("tracks", "id", "=", track.ID)
@@ -152,11 +153,11 @@ func (track *Track) Delete(request *gondulapi.Request) gondulapi.Result {
 	return result
 }
 
-func (track *Track) create() gondulapi.Result {
+func (track *Track) create() rest.Result {
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
 	}
 
 	result, err := db.Insert("tracks", track)
@@ -164,10 +165,10 @@ func (track *Track) create() gondulapi.Result {
 	return result
 }
 
-func (track *Track) createOrUpdate() gondulapi.Result {
+func (track *Track) createOrUpdate() rest.Result {
 	exists, existsErr := track.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Error: existsErr}
 	}
 
 	if exists {
@@ -191,15 +192,15 @@ func (track *Track) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (track *Track) validate() gondulapi.Result {
+func (track *Track) validate() rest.Result {
 	switch {
 	case track.ID == "":
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	case !track.validateType():
-		return gondulapi.Result{Code: 400, Message: "missing or invalid type"}
+		return rest.Result{Code: 400, Message: "missing or invalid type"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 func (track *Track) validateType() bool {

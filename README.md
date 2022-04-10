@@ -1,44 +1,24 @@
-# Gondul API (Tech:Online 2021 Edition)
+# Tech:Online Backend
 
-A temporary gondulapi fork for Tech:Online 2021.
+Main repo: [Tech:Online](https://github.com/gathering/tech-online)
+
+Forked from the [Gondul API](https://github.com/gathering/gondulapi) repo for Tech:Online 2020. The 2020 version by Kristian Lyngstøl can be found in the [Tech:Online](https://github.com/gathering/tech-online) repo history. The 2021 and 2022 versions can be found here.
 
 ## Description
 
-This is the API engine that will be used for the Gondul backend in the
-future. At present, this is very much a work in progress and should NOT be
-used unless you talk to me directly about it first - unless you like
-breaking things.
-
-The design goals are:
-
-1. Make it very hard to do the wrong thing.
-2. Enforce/ensure HTTP RESTful best behavior.
-3. Minimize boilerplate-code
-4. Make prototyping fun and easy.
-
-To achieve this, we aim that users of the Gondul API will work mainly with
-organizing their own data types and how they are interconnected, and not
-worry about how that is parsed to/from JSON or checked for type-safety.
-
-The HTTP-bit is pretty small, but important. It's worth noting that users
-of the api-code will *not* have access to any information about the caller.
-This is a design decision - it's not your job, it's the job of the
-HTTP-server (which is represented by the Gondul API engine here). If your
-data types rely on data from the client, you're doing it wrong.
-
-The database-bit can be split into a few categories as well. But mainly, it
-is an attempt to make it unnecessary to write a lot of boiler-plate to get
-sensible behavior. It is currently written with several known flaws, or
-trade-offs, so it's not suited for large deployments, but can be considered
-a POC or research.
-
-In general, the DB engine uses introspection to figure out how to figure
-out how to retrieve and save an object. The Update mechanism will only
-update fields that are actually provided (if that is possible to detect!).
+See [Gondul API](https://github.com/gathering/gondulapi) for more details on the underlying framework.
 
 ## Development
 
-### Setup with Docker Compose
+### Spin Up Local Keycloak Server
+
+Optional, used to test OpenID Connect (or OAuth 2.0) authentication.
+
+1.
+
+### Setup and Run App with Docker Compose
+
+You don't have to use Docker or Docker Compose, but it makes it easier.
 
 1. (First time) Create local config: `cp dev/config.json dev/config.local.json`
 1. (First time) Start the DB (detatched): `docker-compose -f dev/docker-compose.yml up -d db`
@@ -47,7 +27,7 @@ update fields that are actually provided (if that is possible to detect!).
 1. Seed example data: `dev/seed.sh`
 1. Profit.
 
-### Notes
+### Devemopment Miscellanea
 
 - Check linting errors: `golint ./...`
 
@@ -55,9 +35,31 @@ update fields that are actually provided (if that is possible to detect!).
 
 - This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
 
-## Desirable Changes
+## Changes (2022)
 
-(Written after the event.)
+Mainly so frontend-people and such can see what changed. This is not a changelog. Also, this repo is not versioned. Yet. lol.
+
+- Rename Go module from `github.com/gathering/gondulapi` to `github.com/gathering/tech-online-backend` (using import alias `techo`).
+- Remove temporary, custom endpoints (`/custom/track-stations/` and `/custom/station-tasks-tests/`).
+- Changed config structure.
+
+## TODO
+
+### General
+
+- Test new error.
+- Remove global state.
+- Add docs comment to all packages, with consistent formatting.
+- Avoid weird dependencies between packages.
+- Cleanup receiver after partial refactoring and general lack of comments.
+- Bump Go and repo versions.
+- Update file header license.
+- Implement OpenID Connect or OAuth 2.0.
+- Cleanup admin-by-path stuff and associated "ForAdmin" stuff where admin stuff was on separate endpoints.
+- From "database_string" to actual parameters.
+- Add "REST" prefix to all Get/Put/Post/Delete/Update.
+
+### Desirable Changes from 2021
 
 - UUIDs are nice but not so nice to remember for manual API calls. Maybe find a way to support both UUIDs and composite keys (e.g. track ID + station shortname) in a clean way?
 - Make sure the `print-*.sh` scripts aren't needed.

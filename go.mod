@@ -1,4 +1,4 @@
-module github.com/gathering/gondulapi
+module github.com/gathering/tech-online-backend
 
 go 1.16
 

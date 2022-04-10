@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,15 +18,17 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package schedule
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/receiver"
+	"github.com/gathering/tech-online-backend/rest"
+	auth "github.com/gathering/tech-online-backend/user"
 	"github.com/google/uuid"
 )
 
@@ -65,7 +67,7 @@ func init() {
 }
 
 // Get gets multiple timeslots.
-func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+func (timeslots *TimeslotsForAdmins) Get(request *rest.Request) rest.Result {
 	now := time.Now()
 	var whereArgs []interface{}
 	if userID, ok := request.QueryArgs["user-token"]; ok {
@@ -77,7 +79,7 @@ func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.R
 
 	selectErr := db.SelectMany(timeslots, "timeslots", whereArgs...)
 	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+		return rest.Result{Error: selectErr}
 	}
 
 	// Post-fetch filtering (expensive and easy to do in SQL but hard with DB layer)
@@ -90,7 +92,7 @@ func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.R
 		for _, timeslot := range oldTimeslots {
 			stationsExist, err := timeslot.stationsExistWithThis()
 			if err != nil {
-				return gondulapi.Result{Error: err}
+				return rest.Result{Error: err}
 			}
 			if assignedStation && !stationsExist {
 				continue
@@ -105,11 +107,11 @@ func (timeslots *TimeslotsForAdmins) Get(request *gondulapi.Request) gondulapi.R
 		}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets multiple timeslots.
-func (timeslots *Timeslots) Get(request *gondulapi.Request) gondulapi.Result {
+func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -120,37 +122,37 @@ func (timeslots *Timeslots) Get(request *gondulapi.Request) gondulapi.Result {
 	if userTokenOk {
 		whereArgs = append(whereArgs, "user_token", "=", userToken)
 	} else {
-		return gondulapi.Result{Code: 400, Message: "missing user token"}
+		return rest.Result{Code: 400, Message: "missing user token"}
 	}
 
 	selectErr := db.SelectMany(timeslots, "timeslots", whereArgs...)
 	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+		return rest.Result{Error: selectErr}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets a single timeslot.
-func (timeslot *TimeslotForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *TimeslotForAdmins) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	found, err := db.Select(timeslot, "timeslots", "id", "=", id)
 	if err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	}
 	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post creates a new timeslot.
-func (timeslot *TimeslotForAdmins) Post(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *TimeslotForAdmins) Post(request *rest.Request) rest.Result {
 	if timeslot.ID == nil {
 		newID := uuid.New()
 		timeslot.ID = &newID
@@ -165,19 +167,19 @@ func (timeslot *TimeslotForAdmins) Post(request *gondulapi.Request) gondulapi.Re
 	}
 
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/timeslot/%v/", gondulapi.Config.SitePrefix, timeslot.ID)
+	result.Location = fmt.Sprintf("%v/timeslot/%v/", config.Config.SitePrefix, timeslot.ID)
 	return result
 }
 
 // Put updates a timeslot.
-func (timeslot *TimeslotForAdmins) Put(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *TimeslotForAdmins) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
 	if timeslot.ID != nil && (*timeslot.ID).String() != id {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 	if result := timeslot.validate(); result.HasErrorOrCode() {
 		return result
@@ -187,41 +189,41 @@ func (timeslot *TimeslotForAdmins) Put(request *gondulapi.Request) gondulapi.Res
 }
 
 // Delete deletes a timeslot.
-func (timeslot *TimeslotForAdmins) Delete(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *TimeslotForAdmins) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
 	if uuidError != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "invalid ID"}
 	}
 
 	timeslot.ID = &id
 	exists, existsErr := timeslot.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Error: existsErr}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("timeslots", "id", "=", timeslot.ID)
+	dbResult, err := db.Delete("timeslots", "id", "=", timeslot.ID)
 	result.Error = err
 	return result
 }
 
 // Get gets a single timeslot.
-func (timeslot *Timeslot) Get(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	// Require user token.
 	userToken, userTokenOk := request.QueryArgs["user-token"]
 	if !userTokenOk {
-		return gondulapi.Result{Code: 400, Message: "missing user token"}
+		return rest.Result{Code: 400, Message: "missing user token"}
 	}
 
 	// Proxy.
@@ -233,7 +235,7 @@ func (timeslot *Timeslot) Get(request *gondulapi.Request) gondulapi.Result {
 
 	// Validate token.
 	if timeslotForAdmins.UserToken != userToken {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid token"}
+		return rest.Result{Failed: 1, Code: 400, Message: "invalid token"}
 	}
 
 	*timeslot = Timeslot(timeslotForAdmins)
@@ -241,7 +243,7 @@ func (timeslot *Timeslot) Get(request *gondulapi.Request) gondulapi.Result {
 }
 
 // Post creates a new timeslot.
-func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
+func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
 	// Limit access to certain fields
 	timeslot.BeginTime = nil
 	timeslot.EndTime = nil
@@ -254,24 +256,24 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 }
 
 // Put updates a timeslot.
-// func (timeslot *Timeslot) Put(request *gondulapi.Request) gondulapi.Result {
+// func (timeslot *Timeslot) Put(request *rest.Request) rest.Result {
 // 	id, idExists := request.PathArgs["id"]
 // 	if !idExists || id == "" {
-// 		return gondulapi.Result{Code: 400, Message: "missing ID"}
+// 		return rest.Result{Code: 400, Message: "missing ID"}
 // 	}
 
 // 	// Require user token.
 // 	userToken, userTokenOk := request.QueryArgs["user-token"]
 // 	if !userTokenOk {
-// 		return gondulapi.Result{Code: 400, Message: "missing user token"}
+// 		return rest.Result{Code: 400, Message: "missing user token"}
 // 	}
 // 	if timeslot.UserToken != userToken {
-// 		return gondulapi.Result{Failed: 1, Code: 400, Message: "incorrect user token"}
+// 		return rest.Result{Failed: 1, Code: 400, Message: "incorrect user token"}
 // 	}
 
 // 	// Validate
 // 	if timeslot.ID != nil && (*timeslot.ID).String() != id {
-// 		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+// 		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
 // 	}
 // 	timeslotForAdmins := TimeslotForAdmins(*timeslot)
 // 	if result := timeslotForAdmins.validate(); result.HasErrorOrCode() {
@@ -282,49 +284,49 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 // 	var existingTimeslot TimeslotForAdmins
 // 	found, err := db.Select(&existingTimeslot, "timeslots", "id", "=", id)
 // 	if err != nil {
-// 		return gondulapi.Result{Error: err}
+// 		return rest.Result{Error: err}
 // 	}
 // 	if !found {
-// 		return gondulapi.Result{Code: 404, Message: "not found"}
+// 		return rest.Result{Code: 404, Message: "not found"}
 // 	}
 
 // 	// Verify user token (before proxy).
 // 	if existingTimeslot.UserToken != userToken {
-// 		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid token"}
+// 		return rest.Result{Failed: 1, Code: 400, Message: "invalid token"}
 // 	}
 
 // 	return timeslotForAdmins.createOrUpdate()
 // }
 
 // Delete deletes a timeslot.
-// func (timeslot *Timeslot) Delete(request *gondulapi.Request) gondulapi.Result {
+// func (timeslot *Timeslot) Delete(request *rest.Request) rest.Result {
 // 	id, idExists := request.PathArgs["id"]
 // 	if !idExists || id == "" {
-// 		return gondulapi.Result{Code: 400, Message: "missing ID"}
+// 		return rest.Result{Code: 400, Message: "missing ID"}
 // 	}
 
 // 	// Require user token.
 // 	userToken, userTokenOk := request.QueryArgs["user-token"]
 // 	if !userTokenOk {
-// 		return gondulapi.Result{Code: 400, Message: "missing user token"}
+// 		return rest.Result{Code: 400, Message: "missing user token"}
 // 	}
 // 	if timeslot.UserToken != userToken {
-// 		return gondulapi.Result{Failed: 1, Code: 400, Message: "incorrect user token"}
+// 		return rest.Result{Failed: 1, Code: 400, Message: "incorrect user token"}
 // 	}
 
 // 	// Get existing timeslot to check if exists and to compare token
 // 	var existingTimeslot TimeslotForAdmins
 // 	found, err := db.Select(&existingTimeslot, "timeslots", "id", "=", id)
 // 	if err != nil {
-// 		return gondulapi.Result{Error: err}
+// 		return rest.Result{Error: err}
 // 	}
 // 	if !found {
-// 		return gondulapi.Result{Code: 404, Message: "not found"}
+// 		return rest.Result{Code: 404, Message: "not found"}
 // 	}
 
 // 	// Verify user token (before proxy).
 // 	if existingTimeslot.UserToken != userToken {
-// 		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid token"}
+// 		return rest.Result{Failed: 1, Code: 400, Message: "invalid token"}
 // 	}
 
 // 	result, err := db.Delete("timeslots", "id", "=", timeslot.ID)
@@ -332,11 +334,11 @@ func (timeslot *Timeslot) Post(request *gondulapi.Request) gondulapi.Result {
 // 	return result
 // }
 
-func (timeslot *TimeslotForAdmins) create() gondulapi.Result {
+func (timeslot *TimeslotForAdmins) create() rest.Result {
 	if exists, err := timeslot.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
 	}
 
 	result, err := db.Insert("timeslots", timeslot)
@@ -344,10 +346,10 @@ func (timeslot *TimeslotForAdmins) create() gondulapi.Result {
 	return result
 }
 
-func (timeslot *TimeslotForAdmins) createOrUpdate() gondulapi.Result {
+func (timeslot *TimeslotForAdmins) createOrUpdate() rest.Result {
 	exists, existsErr := timeslot.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Error: existsErr}
 	}
 
 	if exists {
@@ -391,41 +393,41 @@ func (timeslot *TimeslotForAdmins) stationsExistWithThis() (bool, error) {
 	return count > 0, nil
 }
 
-func (timeslot *TimeslotForAdmins) validate() gondulapi.Result {
+func (timeslot *TimeslotForAdmins) validate() rest.Result {
 	switch {
 	case timeslot.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	case timeslot.UserToken == "":
-		return gondulapi.Result{Code: 400, Message: "missing user token"}
+		return rest.Result{Code: 400, Message: "missing user token"}
 	case timeslot.TrackID == "":
-		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+		return rest.Result{Code: 400, Message: "missing track ID"}
 	case (timeslot.BeginTime == nil) != (timeslot.EndTime == nil):
-		return gondulapi.Result{Code: 400, Message: "only begin or end time set"}
+		return rest.Result{Code: 400, Message: "only begin or end time set"}
 	case timeslot.BeginTime != nil && timeslot.EndTime != nil && timeslot.EndTime.Before(*timeslot.BeginTime):
-		return gondulapi.Result{Code: 400, Message: "cannot end before it begins"}
+		return rest.Result{Code: 400, Message: "cannot end before it begins"}
 	}
 
-	user := User{Token: timeslot.UserToken}
+	user := auth.User{Token: timeslot.UserToken}
 	if exists, err := user.exists(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced user does not exist"}
+		return rest.Result{Code: 400, Message: "referenced user does not exist"}
 	}
 	track := Track{ID: timeslot.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced track does not exist"}
+		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 
 	// Check if the user has a timeslot for the current track which hasn't ended yet.
 	if has, err := timeslot.hasCurrentTimeslot(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Error: err}
 	} else if has {
-		return gondulapi.Result{Code: 409, Message: "user currently has timeslot for this track"}
+		return rest.Result{Code: 409, Message: "user currently has timeslot for this track"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 func (timeslot *TimeslotForAdmins) hasCurrentTimeslot() (bool, error) {
@@ -440,28 +442,28 @@ func (timeslot *TimeslotForAdmins) hasCurrentTimeslot() (bool, error) {
 }
 
 // Post attempts to find an available station to bind to the timeslot.
-func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulapi.Request) gondulapi.Result {
+func (assignStationRequest *TimeslotAssignStationRequest) Post(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
 	// Get the things
 	var timeslot TimeslotForAdmins
 	timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots", "id", "=", id)
 	if timeslotErr != nil {
-		return gondulapi.Result{Error: timeslotErr}
+		return rest.Result{Error: timeslotErr}
 	}
 	if !timeslotFound {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 	var track Track
 	trackFound, trackErr := db.Select(&track, "tracks", "id", "=", timeslot.TrackID)
 	if trackErr != nil {
-		return gondulapi.Result{Error: trackErr}
+		return rest.Result{Error: trackErr}
 	}
 	if !trackFound {
-		return gondulapi.Result{Code: 404, Message: "track not found"}
+		return rest.Result{Code: 404, Message: "track not found"}
 	}
 
 	var station *Station
@@ -474,7 +476,7 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 		"timeslot", "=", "",
 	)
 	if stationsErr != nil {
-		return gondulapi.Result{Error: stationsErr}
+		return rest.Result{Error: stationsErr}
 	}
 	if len(stations) > 0 {
 		station = stations[0]
@@ -483,9 +485,9 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 	// If server and no available, try to allocate one
 	if track.Type == trackTypeServer && station == nil {
 		// Check limit (with friendly 404s instead of 400s)
-		trackConfig, trackConfigOk := gondulapi.Config.ServerTracks[track.ID]
+		trackConfig, trackConfigOk := config.Config.ServerTracks[track.ID]
 		if !trackConfigOk || trackConfig.BaseURL == "" {
-			return gondulapi.Result{Code: 404, Message: "no available stations and track not configured for dynamic stations"}
+			return rest.Result{Code: 404, Message: "no available stations and track not configured for dynamic stations"}
 		}
 		maxStations := trackConfig.MaxInstances
 		if maxStations > 0 {
@@ -493,10 +495,10 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 			var count int
 			currentRowErr := currentRow.Scan(&count)
 			if currentRowErr != nil {
-				return gondulapi.Result{Error: currentRowErr}
+				return rest.Result{Error: currentRowErr}
 			}
 			if count+1 > maxStations {
-				return gondulapi.Result{Code: 404, Message: "no available stations and limit for dynamic stations reached"}
+				return rest.Result{Code: 404, Message: "no available stations and limit for dynamic stations reached"}
 			}
 		}
 
@@ -509,7 +511,7 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 
 	// Check if an available station was found or created
 	if station == nil {
-		return gondulapi.Result{Code: 404, Message: "no available stations"}
+		return rest.Result{Code: 404, Message: "no available stations"}
 	}
 
 	// Take station and save
@@ -528,45 +530,45 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *gondulap
 		return result
 	}
 
-	return gondulapi.Result{Code: 303, Location: fmt.Sprintf("%v/station/%v/", gondulapi.Config.SitePrefix, station.ID)}
+	return rest.Result{Code: 303, Location: fmt.Sprintf("%v/station/%v/", config.Config.SitePrefix, station.ID)}
 }
 
 // Post finishes a timeslot.
-func (finishRequest *TimeslotFinishRequest) Post(request *gondulapi.Request) gondulapi.Result {
+func (finishRequest *TimeslotFinishRequest) Post(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
 	}
 
 	// Get the things
 	var timeslot TimeslotForAdmins
 	timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots", "id", "=", id)
 	if timeslotErr != nil {
-		return gondulapi.Result{Error: timeslotErr}
+		return rest.Result{Error: timeslotErr}
 	}
 	if !timeslotFound {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 	var track Track
 	trackFound, trackErr := db.Select(&track, "tracks", "id", "=", timeslot.TrackID)
 	if trackErr != nil {
-		return gondulapi.Result{Error: trackErr}
+		return rest.Result{Error: trackErr}
 	}
 	if !trackFound {
-		return gondulapi.Result{Code: 404, Message: "track not found"}
+		return rest.Result{Code: 404, Message: "track not found"}
 	}
 	var station Station
 	stationFound, stationErr := db.Select(&station, "stations", "timeslot", "=", id)
 	if stationErr != nil {
-		return gondulapi.Result{Error: stationErr}
+		return rest.Result{Error: stationErr}
 	}
 	if !stationFound {
-		return gondulapi.Result{Code: 400, Message: "no station assigned to this timeslot"}
+		return rest.Result{Code: 400, Message: "no station assigned to this timeslot"}
 	}
 
 	// Check stuff
 	if station.TrackID != track.ID {
-		return gondulapi.Result{Code: 400, Message: "mismatch between timeslot track and assigned station track (this shouldn't happen)"}
+		return rest.Result{Code: 400, Message: "mismatch between timeslot track and assigned station track (this shouldn't happen)"}
 	}
 
 	// Update end time
@@ -585,7 +587,7 @@ func (finishRequest *TimeslotFinishRequest) Post(request *gondulapi.Request) gon
 			return result
 		}
 	} else {
-		return gondulapi.Result{Code: 400, Message: "unknown track type (this shouldn't happen)"}
+		return rest.Result{Code: 400, Message: "unknown track type (this shouldn't happen)"}
 	}
 
 	// Save timeslot and station
@@ -596,5 +598,5 @@ func (finishRequest *TimeslotFinishRequest) Post(request *gondulapi.Request) gon
 		return result
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }

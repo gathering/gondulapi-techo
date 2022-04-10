@@ -1,6 +1,7 @@
 /*
-Gondul GO API, db tests
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -22,9 +23,9 @@ package db_test
 import (
 	"testing"
 
-	"github.com/gathering/gondulapi/db"
-	h "github.com/gathering/gondulapi/helper"
-	"github.com/gathering/gondulapi/types"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/helper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,171 +38,170 @@ func init() {
 // been buggy in the past.
 type system struct {
 	Sysname   string
-	Ip        *types.IP
+	Ip        *string
 	Ignored   *string `column:"-"`
 	Vlan      *int
-	Placement *types.Box
+	Placement *string
 }
 
 func TestSelectMany(t *testing.T) {
 	systems := make([]system, 0)
-	err := db.SelectMany(1, "1", "things", &systems)
-	h.CheckNotEqual(t, err, nil)
-	err = db.Connect()
-	h.CheckEqual(t, err, nil)
-	err = db.SelectMany(1, "1", "things", &systems)
-	h.CheckEqual(t, err, nil)
-	h.CheckNotEqual(t, len(systems), 0)
+	result := db.SelectMany(1, "1", "things", &systems)
+	helper.CheckNotEqual(t, result.Error, nil)
+	err := db.Connect(config.Config.DatabaseString)
+	helper.CheckEqual(t, err, nil)
+	result = db.SelectMany(1, "1", "things", &systems)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckNotEqual(t, len(systems), 0)
 	t.Logf("Passed base test, got %d items back", len(systems))
 
 	indirect := make([]*system, 0)
-	err = db.SelectMany(1, "1", "things", &indirect)
-	h.CheckEqual(t, err, nil)
-	h.CheckNotEqual(t, len(indirect), 0)
+	result = db.SelectMany(1, "1", "things", &indirect)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckNotEqual(t, len(indirect), 0)
 
-	err = db.SelectMany(1, "2", "things", &systems)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, len(systems), 0)
+	result = db.SelectMany(1, "2", "things", &systems)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, len(systems), 0)
 
-	err = db.SelectMany(1, "1", "asfasf", &systems)
-	h.CheckNotEqual(t, err, nil)
+	result = db.SelectMany(1, "1", "asfasf", &systems)
+	helper.CheckNotEqual(t, result.Error, nil)
 
-	err = db.SelectMany(1, "1", "things", nil)
-	h.CheckNotEqual(t, err, nil)
+	result = db.SelectMany(1, "1", "things", nil)
+	helper.CheckNotEqual(t, result.Error, nil)
 
-	err = db.SelectMany(1, "1", "things", systems)
-	h.CheckNotEqual(t, err, nil)
+	result = db.SelectMany(1, "1", "things", systems)
+	helper.CheckNotEqual(t, result.Error, nil)
 
 	aSystem := system{}
-	err = db.SelectMany(1, "1", "things", &aSystem)
-	h.CheckNotEqual(t, err, nil)
+	result = db.SelectMany(1, "1", "things", &aSystem)
+	helper.CheckNotEqual(t, result.Error, nil)
 	db.DB.Close()
 	db.DB = nil
 }
 
 func TestSelect(t *testing.T) {
 	item := system{}
-	found, err := db.Select(1, "1", "things", &item)
-	h.CheckNotEqual(t, err, nil)
+	result := db.Select(1, "1", "things", &item)
+	helper.CheckNotEqual(t, result.Error, nil)
 
-	err = db.Connect()
-	h.CheckEqual(t, err, nil)
+	err := db.Connect(config.Config.DatabaseString)
+	helper.CheckEqual(t, err, nil)
 
-	found, err = db.Select(1, "1", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckNotEqual(t, found, false)
+	result = db.Select(1, "1", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckNotEqual(t, result.IsSuccess(), false)
 
-	found, err = db.Select(1, "1", "things", item)
-	h.CheckNotEqual(t, err, nil)
-	h.CheckNotEqual(t, found, true)
+	result = db.Select(1, "1", "things", item)
+	helper.CheckNotEqual(t, result.Error, nil)
+	helper.CheckNotEqual(t, result.IsSuccess(), true)
 
-	found, err = db.Select(1, "sysnax", "things", &item)
-	h.CheckNotEqual(t, err, nil)
-	h.CheckNotEqual(t, found, true)
+	result = db.Select(1, "sysnax", "things", &item)
+	helper.CheckNotEqual(t, result.Error, nil)
+	helper.CheckNotEqual(t, result.IsSuccess(), true)
 
-	found, err = db.Select("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, true)
-	h.CheckEqual(t, item.Sysname, "e1-3")
-	h.CheckEqual(t, *item.Vlan, 1)
+	result = db.Select("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), true)
+	helper.CheckEqual(t, item.Sysname, "e1-3")
+	helper.CheckEqual(t, *item.Vlan, 1)
 	db.DB.Close()
 	db.DB = nil
 }
 
 func TestUpdate(t *testing.T) {
 	item := system{}
-	err := db.Connect()
-	h.CheckEqual(t, err, nil)
+	err := db.Connect(config.Config.DatabaseString)
+	helper.CheckEqual(t, err, nil)
 
-	found, err := db.Select("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, true)
-	h.CheckEqual(t, *item.Vlan, 1)
+	result := db.Select("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), true)
+	helper.CheckEqual(t, *item.Vlan, 1)
 
 	*item.Vlan = 42
-	report, err := db.Update("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Update("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 
 	*item.Vlan = 0
-	found, err = db.Select("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, true)
-	h.CheckEqual(t, *item.Vlan, 42)
+	result = db.Select("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), true)
+	helper.CheckEqual(t, *item.Vlan, 42)
 
 	*item.Vlan = 1
-	report, err = db.Update("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Update("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 
 	*item.Vlan = 0
-	found, err = db.Select("e1-3", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, true)
-	h.CheckEqual(t, *item.Vlan, 1)
+	result = db.Select("e1-3", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), true)
+	helper.CheckEqual(t, *item.Vlan, 1)
 	db.DB.Close()
 	db.DB = nil
 }
 
 func TestInsert(t *testing.T) {
 	item := system{}
-	err := db.Connect()
-	h.CheckEqual(t, err, nil)
+	err := db.Connect(config.Config.DatabaseString)
+	helper.CheckEqual(t, err, nil)
 
-	found, err := db.Select("kjeks", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, false)
+	result := db.Select("kjeks", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), false)
 
 	item.Sysname = "kjeks"
 	vlan := 42
 	item.Vlan = &vlan
-	newip, err := types.NewIP("192.168.2.1")
-	h.CheckEqual(t, err, nil)
+	newip := "192.168.2.1"
 	item.Ip = &newip
-	report, err := db.Insert("things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
+	result = db.Insert("things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
 
-	found, err = db.Select("kjeks", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, found, true)
+	result = db.Select("kjeks", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.IsSuccess(), true)
 
-	report, err = db.Delete("kjeks", "sysname", "things")
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Delete("kjeks", "sysname", "things")
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 
-	report, err = db.Upsert("kjeks", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, *item.Vlan, 42)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Upsert("kjeks", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, *item.Vlan, 42)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 
 	*item.Vlan = 8128
-	report, err = db.Upsert("kjeks", "sysname", "things", &item)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Upsert("kjeks", "sysname", "things", &item)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 
 	systems := make([]system, 0)
-	err = db.SelectMany("kjeks", "sysname", "things", &systems)
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, len(systems), 1)
-	h.CheckEqual(t, *systems[0].Vlan, 8128)
+	result = db.SelectMany("kjeks", "sysname", "things", &systems)
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, len(systems), 1)
+	helper.CheckEqual(t, *systems[0].Vlan, 8128)
 
-	report, err = db.Delete("kjeks", "sysname", "things")
-	h.CheckEqual(t, err, nil)
-	h.CheckEqual(t, report.Affected, 1)
-	h.CheckEqual(t, report.Ok, 1)
-	h.CheckEqual(t, report.Failed, 0)
+	result = db.Delete("kjeks", "sysname", "things")
+	helper.CheckEqual(t, result.Error, nil)
+	helper.CheckEqual(t, result.Affected, 1)
+	helper.CheckEqual(t, result.Ok, 1)
+	helper.CheckEqual(t, result.Failed, 0)
 	db.DB.Close()
 	db.DB = nil
 }

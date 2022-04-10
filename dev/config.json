@@ -1,6 +1,6 @@
 {
 	"listen_address": ":8080",
-	"db": "host=db user=gondulapi password=lolkek dbname=gondulapi sslmode=disable",
+	"database_string": "host=db user=techo password=lolkek dbname=techo sslmode=disable",
 	"debug": true,
 	"site_prefix": "/api",
 	"server_tracks": {

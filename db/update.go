@@ -1,6 +1,7 @@
 /*
-Gondul GO API, database integration
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,33 +18,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-// Package db provides convenience-functions for mapping Go-types to a
-// database. It does not address a few well-known issues with database
-// code and is not particularly fast, but is intended to make 90% of the
-// database-work trivial, while not attempting to solve the last 10% at
-// all.
-//
-// The convenience-functions work well if you are not regularly handling
-// updates to the same content in parallel, and you do not depend on
-// extreme performance for SELECT. If you are unsure if this is the case,
-// I'm willing to bet five kilograms of bananas that it's not. You'd know
-// if it was.
-//
-// You can always just use the db/DB handle directly, which is provided
-// intentionally.
-//
-// db tries to automatically map a type to a row, both on insert/update and
-// select. It does this using introspection and the official database/sql
-// package's interfaces for scanning results and packing data types. So if
-// your data types implement sql.Scanner and sql/driver.Value, you can use
-// them directly with 0 extra boiler-plate.
-//
-// To use it, you need a struct datatype with at least some exported
-// fields that map to a database table. If your field names don't match
-// the column name, you can tag the struct fields with
-// `column:"alternatename"`. If you wish to have this package ignore the
-// field entirely (e.g.: it's exported, but doesn't exist at all in the
-// database), tag it with `column:"-"`.
+/*
+Package db provides convenience-functions for mapping Go-types to a
+database. It does not address a few well-known issues with database
+code and is not particularly fast, but is intended to make 90% of the
+database-work trivial, while not attempting to solve the last 10% at
+all.
+
+The convenience-functions work well if you are not regularly handling
+updates to the same content in parallel, and you do not depend on
+extreme performance for SELECT. If you are unsure if this is the case,
+I'm willing to bet five kilograms of bananas that it's not. You'd know
+if it was.
+
+You can always just use the db/DB handle directly, which is provided
+intentionally.
+
+db tries to automatically map a type to a row, both on insert/update and
+select. It does this using introspection and the official database/sql
+package's interfaces for scanning results and packing data types. So if
+your data types implement sql.Scanner and sql/driver.Value, you can use
+them directly with 0 extra boiler-plate.
+
+To use it, you need a struct datatype with at least some exported
+fields that map to a database table. If your field names don't match
+the column name, you can tag the struct fields with
+`column:"alternatename"`. If you wish to have this package ignore the
+field entirely (e.g.: it's exported, but doesn't exist at all in the
+database), tag it with `column:"-"`.
+*/
 package db
 
 import (
@@ -51,7 +54,6 @@ import (
 	"reflect"
 	"unicode"
 
-	"github.com/gathering/gondulapi"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -73,8 +75,7 @@ func enumerate(haystacks map[string]bool, populate bool, d interface{}) (keyvals
 	st := v.Type()
 	kvs := keyvals{}
 	if st.Kind() != reflect.Struct {
-		log.Printf("Got the wrong data type. Got %s / %T.", st.Kind(), d)
-		return kvs, gondulapi.InternalError
+		return kvs, newError("Got the wrong data type. Got %s / %T.", st.Kind(), d)
 	}
 
 	kvs.keys = make([]string, 0)
@@ -113,12 +114,13 @@ func enumerate(haystacks map[string]bool, populate bool, d interface{}) (keyvals
 // Update attempts to update the object in the database, using the provided
 // string and matching the haystack with the needle. It skips fields that
 // are nil-pointers.
-func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Result, error) {
-	report := gondulapi.Result{}
+func Update(table string, d interface{}, searcher ...interface{}) Result {
+	report := Result{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++
-		return report, err
+		report.Error = err
+		return report
 	}
 	haystacks := make(map[string]bool, 0)
 	for _, item := range search {
@@ -126,9 +128,9 @@ func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Res
 	}
 	kvs, err := enumerate(haystacks, false, d)
 	if err != nil {
-		log.WithError(err).Error("Update(): enumerate() failed")
 		report.Failed++
-		return report, gondulapi.InternalError
+		report.Error = newErrorWithCause("Update(): enumerate() failed", err)
+		return report
 	}
 	lead := fmt.Sprintf("UPDATE %s SET ", table)
 	comma := ""
@@ -144,15 +146,16 @@ func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Res
 		kvs.values = append(kvs.values, item)
 	}
 	res, err := DB.Exec(lead, kvs.values...)
+	log.WithField("query", lead).Trace("Update()")
 	if err != nil {
-		log.WithError(err).WithField("lead", lead).Error("Update(): EXEC failed")
 		report.Failed++
-		return report, gondulapi.InternalError
+		report.Error = newErrorWithCause("Update(): EXEC failed", err)
+		return report
 	}
 	rowsaf, _ := res.RowsAffected()
 	report.Ok++
 	report.Affected += int(rowsaf)
-	return report, nil
+	return report
 }
 
 // Insert adds the object to the table specified. It only provides the
@@ -161,14 +164,14 @@ func Update(table string, d interface{}, searcher ...interface{}) (gondulapi.Res
 // if an object already exists, so it will happily make duplicates -
 // your database schema should prevent that, and calling code should
 // check if that is not the desired behavior.
-func Insert(table string, d interface{}) (gondulapi.Result, error) {
-	report := gondulapi.Result{}
+func Insert(table string, d interface{}) Result {
+	report := Result{}
 	haystacks := make(map[string]bool, 0)
 	kvs, err := enumerate(haystacks, false, d)
 	if err != nil {
-		log.WithError(err).Error("Insert(): Enumerate failed")
 		report.Failed++
-		return report, gondulapi.InternalError
+		report.Error = newErrorWithCause("Insert(): Enumerate failed", err)
+		return report
 	}
 	lead := fmt.Sprintf("INSERT INTO %s (", table)
 	middle := ""
@@ -180,14 +183,15 @@ func Insert(table string, d interface{}) (gondulapi.Result, error) {
 	}
 	lead = fmt.Sprintf("%s) VALUES(%s)", lead, middle)
 	res, err := DB.Exec(lead, kvs.values...)
+	log.WithField("query", lead).Trace("Insert()")
 	if err != nil {
-		log.WithError(err).WithField("lead", lead).Error("Insert(): EXEC failed")
-		return report, gondulapi.InternalError
+		report.Error = newErrorWithCause("Insert(): EXEC failed", err)
+		return report
 	}
 	rowsaf, _ := res.RowsAffected()
 	report.Ok++
 	report.Affected += int(rowsaf)
-	return report, nil
+	return report
 }
 
 // Upsert makes database-people cringe by first checking if an element
@@ -203,35 +207,37 @@ func Insert(table string, d interface{}) (gondulapi.Result, error) {
 // still attempt an UPDATE, which will fail silently (for now). This can be
 // handled by a front-end doing a double-check, or by just assuming it
 // doesn't happen often enough to be worth fixing.
-func Upsert(table string, d interface{}, searcher ...interface{}) (gondulapi.Result, error) {
-	found, err := Exists(table, searcher...)
-	if err != nil {
-		return gondulapi.Result{Failed: 1}, gondulapi.InternalError
+func Upsert(table string, d interface{}, searcher ...interface{}) Result {
+	existsResult := Exists(table, searcher...)
+	if existsResult.Error != nil {
+		return existsResult
 	}
-	if found {
+	if existsResult.IsSuccess() {
 		return Update(table, d, searcher...)
 	}
 	return Insert(table, d)
 }
 
 // Delete will delete the element, and will also delete duplicates.
-func Delete(table string, searcher ...interface{}) (gondulapi.Result, error) {
-	report := gondulapi.Result{}
+func Delete(table string, searcher ...interface{}) Result {
+	report := Result{}
 	search, err := buildSearch(searcher...)
 	if err != nil {
 		report.Failed++
-		return report, err
+		report.Error = err
+		return report
 	}
 	strsearch, searcharr := buildWhere(0, search)
 	q := fmt.Sprintf("DELETE FROM %s%s", table, strsearch)
 	res, err := DB.Exec(q, searcharr...)
+	log.WithField("query", q).Trace("Delete()")
 	if err != nil {
 		report.Failed++
-		log.WithError(err).WithField("query", q).Error("Delete(): Query failed")
-		return report, gondulapi.InternalError
+		report.Error = newErrorWithCause("Delete(): Query failed", err)
+		return report
 	}
 	rowsaf, _ := res.RowsAffected()
 	report.Ok++
 	report.Affected += int(rowsaf)
-	return report, nil
+	return report
 }

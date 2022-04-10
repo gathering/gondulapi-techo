@@ -1,6 +1,7 @@
 /*
-Gondul GO API
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -20,14 +21,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package main
 
 import (
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
-	_ "github.com/gathering/gondulapi/techo"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/receiver"
+	_ "github.com/gathering/tech-online-backend/techo"
 )
 
 func main() {
-	if err := gondulapi.ParseConfig("config.json"); err != nil {
+	if err := techo.ParseConfig("config.json"); err != nil {
 		panic(err)
 	}
 	if err := db.Connect(); err != nil {

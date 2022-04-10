@@ -1,6 +1,7 @@
 /*
-Gondul GO API, database integration
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,58 +18,90 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-// Package db integrates with generic databases, so far it doesn't do much,
-// but it's supposed to do more.
+/*
+Package db integrates with generic databases, so far it doesn't do much,
+but it's supposed to do more.
+*/
 package db
 
 import (
 	"database/sql"
+	"fmt"
 
-	gapi "github.com/gathering/gondulapi"
-	_ "github.com/lib/pq" // for postgres support
-	log "github.com/sirupsen/logrus"
+	_ "github.com/lib/pq" // For postgres support
 )
 
 // DB is the main database handle used throughout the API
 var DB *sql.DB
+
+// Error - General database error.
+type Error error
+
+type dbError struct {
+	message interface{}
+}
+
+func (e dbError) Error() string {
+	return fmt.Sprintf("%v", e.message)
+}
+
+func newError(messageFormat string, formatVars ...interface{}) Error {
+	return newErrorWithCause(messageFormat, nil, formatVars...)
+}
+
+func newErrorWithCause(messageFormat string, cause error, formatVars ...interface{}) Error {
+	message := fmt.Sprintf(messageFormat, formatVars...)
+	fullMessage := message
+	if cause != nil {
+		fullMessage = fmt.Sprintf("%s: %s", message, cause.Error())
+	}
+	return dbError{fullMessage}
+}
+
+// Result is an update report on write-requests. The precise meaning might
+// vary, but the gist should be the same.
+type Result struct {
+	Affected int   `json:"affected,omitempty"`
+	Ok       int   `json:"ok,omitempty"`
+	Failed   int   `json:"failed,omitempty"`
+	Error    error `json:"-"`
+}
+
+// IsSuccess checks that there were no failed elements, no error and at least one ok or affected element.
+func (result *Result) IsSuccess() bool {
+	return (result.Ok > 0 || result.Affected > 0) && result.Failed == 0 && result.Error == nil
+}
 
 // Ping is a wrapper for DB.Ping: it checks that the database is alive.
 // It's provided to add standard gondulapi-logging and error-types that can
 // be exposed to users.
 func Ping() error {
 	if DB == nil {
-		log.Warn("Ping() issued without a valid DB. Use Connect() first.")
-		return gapi.Error{500, "Failed to communicate with the database"}
+		return newError("Database ping failed: Database not connected")
 	}
 	err := DB.Ping()
 	if err != nil {
-		log.Printf("Failed to ping the database: %v", err)
-		return gapi.Error{500, "Failed to communicate with the database"}
+		return newError("Database ping failed: %v", err)
 	}
-	log.Tracef("Ping() of db successful")
 	return nil
 }
 
 // Connect sets up the database connection, using the configured
 // ConnectionString, and ensures it is working.
-func Connect() error {
+func Connect(connectionString string) error {
 	var err error
-	// Mainly allowed because testing can easily trigger multiple
-	// connects.
 	if DB != nil {
-		log.Warn("Got superfluous db.Connect(). Running a ping and hoping for the best.")
 		return Ping()
 	}
 
-	if gapi.Config.DB == "" {
-		// TODO
-		log.Warn("Using default connection string for debug purposes. Relax, it's a very secure set of credentials.")
-		gapi.Config.DB = "user=kly password=lolkek dbname=klytest sslmode=disable"
+	if connectionString == "" {
+		return newError("Missing database credentials")
 	}
-	DB, err = sql.Open("postgres", gapi.Config.DB)
+
+	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
-		log.Warnf("Failed to connect to database: %v", err)
-		return gapi.Error{500, "Failed to connect to database"}
+		return newError("Failed to connect to database: %v", err)
 	}
+
 	return Ping()
 }
