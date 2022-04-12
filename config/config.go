@@ -47,19 +47,16 @@ type ServerTrackConfig struct {
 
 // ParseConfig reads a file and parses it as JSON, assuming it will be a
 // valid configuration file.
-func ParseConfig(file string) bool {
+func ParseConfig(file string) error {
 	dat, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to read config file")
-		return false
+		return err
 	}
 	if err := json.Unmarshal(dat, &Config); err != nil {
-		log.WithError(err).Fatal("Failed to parse config file")
-		return false
+		return err
 	}
-	log.Tracef("Parsed config file as %v", Config)
 	if Config.Debug {
 		log.SetLevel(log.TraceLevel)
 	}
-	return true
+	return nil
 }

@@ -54,11 +54,10 @@ func (users *UsersForAdmins) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "username", "=", username)
 	}
 
-	selectErr := db.SelectMany(users, "users", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(users, "users", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -70,9 +69,9 @@ func (user *User) Put(request *rest.Request) rest.Result {
 	}
 
 	if user.Token != token {
-		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := user.validate(); result.HasErrorOrCode() {
+	if result := user.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -80,35 +79,38 @@ func (user *User) Put(request *rest.Request) rest.Result {
 }
 
 func (user *User) create() rest.Result {
-	if exists, err := user.exists(); err != nil {
-		return rest.Result{Error: err}
+	if exists, err := user.ExistsWithToken(); err != nil {
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("users", user)
-	result.Error = err
-	return result
+	dbResult := db.Insert("users", user)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (user *User) createOrUpdate() rest.Result {
-	exists, existsErr := user.exists()
+	exists, existsErr := user.ExistsWithToken()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("users", user, "token", "=", user.Token)
-		result.Error = err
-		return result
+		dbResult = db.Update("users", user, "token", "=", user.Token)
+	} else {
+		dbResult = db.Insert("users", user)
 	}
-
-	result, err := db.Insert("users", user)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (user *User) exists() (bool, error) {
+func (user *User) ExistsWithToken() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE token = $1", user.Token)
 	rowErr := row.Scan(&count)
@@ -131,7 +133,7 @@ func (user *User) validate() rest.Result {
 	}
 
 	if exists, err := user.existsUsername(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
 		return rest.Result{Code: 409, Message: "username already exists"}
 	}

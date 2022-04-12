@@ -21,17 +21,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package main
 
 import (
+	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
 	"github.com/gathering/tech-online-backend/receiver"
-	_ "github.com/gathering/tech-online-backend/techo"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	if err := techo.ParseConfig("config.json"); err != nil {
-		panic(err)
+	if err := config.ParseConfig("config.json"); err != nil {
+		log.WithError(err).Fatal("Failed to read config file")
+		return
 	}
-	if err := db.Connect(); err != nil {
-		panic(err)
+	log.Info("Read config file")
+	if err := db.Connect(config.Config.DatabaseString); err != nil {
+		log.WithError(err).Fatal("Failed to read config file")
+		return
 	}
+	log.Info("Connected to database")
 	receiver.Start()
 }

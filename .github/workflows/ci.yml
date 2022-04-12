@@ -22,7 +22,7 @@ jobs:
     - name: Lint
       run: go install golang.org/x/lint/golint@latest && ~/go/bin/golint -set_exit_status ./...
     - name: Build
-      run: go build -v -o gondulapi cmd/test/main.go
+      run: go build -v -o techo-backend cmd/main/main.go
 
   publish-bleeding:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

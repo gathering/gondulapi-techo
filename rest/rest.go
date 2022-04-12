@@ -32,19 +32,15 @@ type Request struct {
 // Result is an update report on write-requests. The precise meaning might
 // vary, but the gist should be the same.
 type Result struct {
-	Affected int    `json:"affected,omitempty"` // Affected elements
-	Ok       int    `json:"ok,omitempty"`       // OK elements
-	Failed   int    `json:"failed,omitempty"`   // Failed elements
-	Message  string `json:"message,omitempty"`  // Message for client
-	Code     int    `json:"-"`                  // HTTP status
-	Location string `json:"-"`                  // For location header if code 3xx
-	Error    error  `json:"-"`                  // Internal error, forces code 500, hidden from client to avoid leak
+	Message  string `json:"message,omitempty"` // Message for client
+	Code     int    `json:"-"`                 // HTTP status
+	Location string `json:"-"`                 // For location header if code 3xx
+	Error    error  `json:"-"`                 // Internal error, forces code 500, hidden from client to avoid leak
 }
 
-// HasErrorOrCode returns true if it contains an error or the status code has been set (not 0).
-// TODO the purpose of this is unclear, maybe remove this
-func (result *Result) HasErrorOrCode() bool {
-	return result.Error != nil || (result.Code != 0 && (result.Code < 200 || result.Code >= 299))
+// IsOk checks if error free and either not set code or a non-error code.
+func (result *Result) IsOk() bool {
+	return result.Error == nil && result.Code >= 0 && result.Code < 400
 }
 
 // Getter implements Get method, which should fetch the object represented

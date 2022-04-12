@@ -18,7 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package track
 
 import (
 	"fmt"
@@ -59,11 +59,10 @@ func (tracks *Tracks) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "type", "=", trackType)
 	}
 
-	selectErr := db.SelectMany(tracks, "tracks", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(tracks, "tracks", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -74,31 +73,30 @@ func (track *Track) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(track, "tracks", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(track, "tracks", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
 // Post creates a new station.
 func (track *Track) Post(request *rest.Request) rest.Result {
-	if result := track.validate(); result.HasErrorOrCode() {
+	if result := track.validate(); !result.IsOk() {
 		return result
 	}
 
 	if exists, err := track.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+		return rest.Result{Code: 409, Message: "duplicate ID"}
 	}
 
 	result := track.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -111,22 +109,22 @@ func (track *Track) Post(request *rest.Request) rest.Result {
 func (track *Track) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	if track.ID != id {
-		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := track.validate(); result.HasErrorOrCode() {
+	if result := track.validate(); !result.IsOk() {
 		return result
 	}
 
 	exists, existsErr := track.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
 	return track.createOrUpdate()
@@ -136,50 +134,55 @@ func (track *Track) Put(request *rest.Request) rest.Result {
 func (track *Track) Delete(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	track.ID = id
 	exists, err := track.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("tracks", "id", "=", track.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("tracks", "id", "=", track.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (track *Track) create() rest.Result {
 	if exists, err := track.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("tracks", track)
-	result.Error = err
-	return result
+	dbResult := db.Insert("tracks", track)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (track *Track) createOrUpdate() rest.Result {
 	exists, existsErr := track.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("tracks", track, "id", "=", track.ID)
-		result.Error = err
-		return result
+		dbResult = db.Update("tracks", track, "id", "=", track.ID)
+	} else {
+		dbResult = db.Insert("tracks", track)
 	}
-
-	result, err := db.Insert("tracks", track)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (track *Track) exists() (bool, error) {

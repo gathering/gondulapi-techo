@@ -59,11 +59,10 @@ func (tasks *Tasks) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
 	}
 
-	selectErr := db.SelectMany(tasks, "tasks", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(tasks, "tasks", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -74,14 +73,13 @@ func (task *Task) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(task, "tasks", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(task, "tasks", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
@@ -91,12 +89,12 @@ func (task *Task) Post(request *rest.Request) rest.Result {
 		newID := uuid.New()
 		task.ID = &newID
 	}
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := task.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -109,14 +107,14 @@ func (task *Task) Post(request *rest.Request) rest.Result {
 func (task *Task) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	if task.ID != nil && (*task.ID).String() != id {
-		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -127,54 +125,59 @@ func (task *Task) Put(request *rest.Request) rest.Result {
 func (task *Task) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
 	if uuidError != nil {
-		return rest.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	task.ID = &id
 	exists, err := task.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("tasks", "id", "=", task.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("tasks", "id", "=", task.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (task *Task) create() rest.Result {
 	if exists, err := task.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("tasks", task)
-	result.Error = err
-	return result
+	dbResult := db.Insert("tasks", task)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (task *Task) createOrUpdate() rest.Result {
 	exists, existsErr := task.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("tasks", task, "id", "=", task.ID)
-		result.Error = err
-		return result
+		dbResult = db.Update("tasks", task, "id", "=", task.ID)
+	} else {
+		dbResult = db.Insert("tasks", task)
 	}
-
-	result, err := db.Insert("tasks", task)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (task *Task) exists() (bool, error) {
@@ -210,14 +213,14 @@ func (task *Task) validate() rest.Result {
 	}
 
 	if exists, err := task.existsTrackShortname(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
 		return rest.Result{Code: 409, Message: "combination of track and shortname already exists"}
 	}
 
 	track := Track{ID: task.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}

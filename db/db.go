@@ -67,9 +67,14 @@ type Result struct {
 	Error    error `json:"-"`
 }
 
-// IsSuccess checks that there were no failed elements, no error and at least one ok or affected element.
+// IsSuccess checks that there were no failed elements, no error AND at least one OK element/operation.
 func (result *Result) IsSuccess() bool {
-	return (result.Ok > 0 || result.Affected > 0) && result.Failed == 0 && result.Error == nil
+	return result.Ok > 0 && result.Failed == 0 && result.Error == nil
+}
+
+// IsFailed checks if there is an error or if any elements failed.
+func (result *Result) IsFailed() bool {
+	return result.Failed > 0 || result.Error != nil
 }
 
 // Ping is a wrapper for DB.Ping: it checks that the database is alive.

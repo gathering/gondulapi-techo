@@ -63,9 +63,9 @@ func init() {
 // Get gets multiple families.
 func (families *DocumentFamilies) Get(request *rest.Request) rest.Result {
 	// TODO order by sequence
-	selectErr := db.SelectMany(families, "document_families")
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(families, "document_families")
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
 
 	return rest.Result{}
@@ -78,11 +78,11 @@ func (family *DocumentFamily) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(family, "document_families", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(family, "document_families", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
@@ -92,17 +92,17 @@ func (family *DocumentFamily) Get(request *rest.Request) rest.Result {
 // Post creates a new family.
 func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
 	if family.ID == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	if exists, err := family.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate ID"}
+		return rest.Result{Code: 409, Message: "duplicate ID"}
 	}
 
 	result := family.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -115,19 +115,19 @@ func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
 func (family *DocumentFamily) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	if family.ID != id {
-		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
 	exists, existsErr := family.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
 	return family.createOrUpdate()
@@ -137,50 +137,61 @@ func (family *DocumentFamily) Put(request *rest.Request) rest.Result {
 func (family *DocumentFamily) Delete(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	family.ID = id
 	exists, err := family.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("document_families", "id", family.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("document_families", "id", family.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (family *DocumentFamily) create() rest.Result {
 	if exists, err := family.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("document_families", family)
-	result.Error = err
-	return result
+	dbResult := db.Insert("document_families", family)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (family *DocumentFamily) createOrUpdate() rest.Result {
 	exists, existsErr := family.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
 	if exists {
-		result, err := db.Update("document_families", family, "id", "=", family.ID)
-		result.Error = err
-		return result
+		dbResult := db.Update("document_families", family, "id", "=", family.ID)
+		if dbResult.IsFailed() {
+			return rest.Result{Code: 500, Error: dbResult.Error}
+		}
+		return rest.Result{}
 	}
 
-	result, err := db.Insert("document_families", family)
-	result.Error = err
-	return result
+	dbResult := db.Insert("document_families", family)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (family *DocumentFamily) exists() (bool, error) {
@@ -203,9 +214,9 @@ func (documents *Documents) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "family", "=", familyID)
 	}
 
-	selectErr := db.SelectMany(documents, "documents", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(documents, "documents", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
 
 	return rest.Result{}
@@ -219,12 +230,9 @@ func (documents *Documents) Put(request *rest.Request) rest.Result {
 		request.PathArgs["family_id"] = document.FamilyID
 		request.PathArgs["shortname"] = document.Shortname
 		result := document.Put(request)
-		if result.HasErrorOrCode() {
+		if !result.IsOk() {
 			return result
 		}
-		totalResult.Affected += result.Affected
-		totalResult.Ok += result.Ok
-		totalResult.Failed += result.Failed
 	}
 
 	return totalResult
@@ -241,11 +249,11 @@ func (document *Document) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing shortname"}
 	}
 
-	found, err := db.Select(document, "documents", "family", "=", familyID, "shortname", "=", shortname)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(document, "documents", "family", "=", familyID, "shortname", "=", shortname)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
@@ -257,12 +265,12 @@ func (document *Document) Post(request *rest.Request) rest.Result {
 	now := time.Now()
 	document.LastChange = &now
 
-	if result := document.validate(); result.HasErrorOrCode() {
+	if result := document.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := document.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -283,13 +291,13 @@ func (document *Document) Put(request *rest.Request) rest.Result {
 	}
 
 	if document.FamilyID != familyID || document.Shortname != shortname {
-		return rest.Result{Failed: 1, Message: "mismatch for family ID or shortname between URL and JSON"}
+		return rest.Result{Code: 400, Message: "mismatch for family ID or shortname between URL and JSON"}
 	}
 
 	now := time.Now()
 	document.LastChange = &now
 
-	if result := document.validate(); result.HasErrorOrCode() {
+	if result := document.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -311,44 +319,55 @@ func (document *Document) Delete(request *rest.Request) rest.Result {
 	document.Shortname = shortname
 	exists, err := document.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("documents", "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
-	result.Error = err
-	return result
+	dbResult := db.Delete("documents", "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (document *Document) create() rest.Result {
 	if exists, err := document.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("documents", document)
-	result.Error = err
-	return result
+	dbResult := db.Insert("documents", document)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (document *Document) createOrUpdate() rest.Result {
 	exists, existsErr := document.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
 	if exists {
-		result, err := db.Update("documents", document, "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
-		result.Error = err
-		return result
+		dbResult := db.Update("documents", document, "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
+		if dbResult.IsFailed() {
+			return rest.Result{Code: 500, Error: dbResult.Error}
+		}
+		return rest.Result{}
 	}
 
-	result, err := db.Insert("documents", document)
-	result.Error = err
-	return result
+	dbResult := db.Insert("documents", document)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+
+	return rest.Result{}
 }
 
 func (document *Document) exists() (bool, error) {
@@ -373,7 +392,7 @@ func (document *Document) validate() rest.Result {
 
 	family := DocumentFamily{ID: document.FamilyID}
 	if exists, err := family.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced family does not exist"}
 	}

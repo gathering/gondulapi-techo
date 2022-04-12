@@ -142,9 +142,7 @@ func Update(table string, d interface{}, searcher ...interface{}) Result {
 	}
 	strsearch, searcharr := buildWhere(last+1, search)
 	lead = fmt.Sprintf("%s%s", lead, strsearch)
-	for _, item := range searcharr {
-		kvs.values = append(kvs.values, item)
-	}
+	kvs.values = append(kvs.values, searcharr...)
 	res, err := DB.Exec(lead, kvs.values...)
 	log.WithField("query", lead).Trace("Update()")
 	if err != nil {

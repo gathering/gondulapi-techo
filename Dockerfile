@@ -9,23 +9,27 @@ COPY go.sum ./
 RUN go mod download
 
 # Build app
+COPY auth auth
 COPY cmd cmd
+COPY config config
 COPY db db
+COPY doc doc
 COPY helper helper
 COPY receiver receiver
-COPY techo techo
-COPY types types
-COPY *.go ./
-RUN go build -v -o gondulapi cmd/test/main.go
+COPY rest rest
+COPY track track
+#COPY *.go ./
+RUN go build -v -o techo-backend cmd/main/main.go
 
 # Test
-RUN go test -v .
+# TODO add tests
+#RUN go test -v ./...
 
 ## Runtime stage
 FROM alpine:3 AS runtime
 WORKDIR /app
 
-COPY --from=build /app/gondulapi ./
+COPY --from=build /app/techo-backend ./
 
-ENTRYPOINT ["./gondulapi"]
+ENTRYPOINT ["./techo-backend"]
 CMD [""]

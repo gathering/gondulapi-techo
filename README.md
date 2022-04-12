@@ -10,12 +10,6 @@ See [Gondul API](https://github.com/gathering/gondulapi) for more details on the
 
 ## Development
 
-### Spin Up Local Keycloak Server
-
-Optional, used to test OpenID Connect (or OAuth 2.0) authentication.
-
-1.
-
 ### Setup and Run App with Docker Compose
 
 You don't have to use Docker or Docker Compose, but it makes it easier.
@@ -27,7 +21,7 @@ You don't have to use Docker or Docker Compose, but it makes it easier.
 1. Seed example data: `dev/seed.sh`
 1. Profit.
 
-### Devemopment Miscellanea
+### Development Miscellanea
 
 - Check linting errors: `golint ./...`
 
@@ -58,6 +52,11 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 - Cleanup admin-by-path stuff and associated "ForAdmin" stuff where admin stuff was on separate endpoints.
 - From "database_string" to actual parameters.
 - Add "REST" prefix to all Get/Put/Post/Delete/Update.
+- Order results by some attribute for certain endpoints.
+- Give init() a more descriptive name. restInit()?
+- Make sure REST result errors aren't shown to users. Add generic message if missing.
+- Server tracks: task_type=1 for classic, task_type=2 for gondul.
+- Add root redirect.
 
 ### Desirable Changes from 2021
 

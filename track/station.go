@@ -29,10 +29,9 @@ import (
 	"strconv"
 
 	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
-	"github.com/gathering/tech-online-backend/schedule"
-	"github.com/gathering/tech-online-backendndulapi/db"
-	"github.com/gathering/tech-online-backendndulapi/receiver"
 	"github.com/google/uuid"
 
 	log "github.com/sirupsen/logrus"
@@ -119,11 +118,10 @@ func (stations *StationsForAdmins) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", timeslotID)
 	}
 
-	selectErr := db.SelectMany(stations, "stations", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(stations, "stations", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -132,7 +130,7 @@ func (stations *Stations) Get(request *rest.Request) rest.Result {
 	// Fetch through admin endpoint (with credentials)
 	stationsForAdmins := StationsForAdmins{}
 	stationsForAdminsResult := stationsForAdmins.Get(request)
-	if stationsForAdminsResult.HasErrorOrCode() {
+	if !stationsForAdminsResult.IsOk() {
 		return stationsForAdminsResult
 	}
 
@@ -143,17 +141,17 @@ func (stations *Stations) Get(request *rest.Request) rest.Result {
 		station := Station(*stationForAdmins)
 		credentials := station.Credentials
 		station.Credentials = ""
-		// If filtering by timeslot and user token, show credentials if correct user token
+		// If filtering by timeslot and user token, show credentials only if correct user token
 		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
-			var timeslot schedule.Timeslot
-			timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+			var timeslot Timeslot
+			timeslotDBResult := db.Select(&timeslot, "timeslots",
 				"id", "=", station.TimeslotID,
 				"user_token", "=", userToken,
 			)
-			if timeslotErr != nil {
-				return rest.Result{Error: timeslotErr}
+			if timeslotDBResult.IsFailed() {
+				return rest.Result{Code: 500, Error: timeslotDBResult.Error}
 			}
-			if timeslotFound {
+			if timeslotDBResult.IsSuccess() {
 				station.Credentials = credentials
 			}
 		}
@@ -171,14 +169,13 @@ func (station *StationForAdmins) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(station, "stations", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(station, "stations", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
@@ -189,11 +186,11 @@ func (station *Station) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(station, "stations", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(station, "stations", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
@@ -202,15 +199,15 @@ func (station *Station) Get(request *rest.Request) rest.Result {
 	credentials := station.Credentials
 	station.Credentials = ""
 	if userTokenOk && userToken != "" && station.TimeslotID != "" {
-		var timeslot schedule.Timeslot
-		timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+		var timeslot Timeslot
+		timeslotDBResult := db.Select(&timeslot, "timeslots",
 			"id", "=", station.TimeslotID,
 			"user_token", "=", userToken,
 		)
-		if timeslotErr != nil {
-			return rest.Result{Error: timeslotErr}
+		if timeslotDBResult.IsFailed() {
+			return rest.Result{Code: 500, Error: timeslotDBResult.Error}
 		}
-		if timeslotFound {
+		if timeslotDBResult.IsSuccess() {
 			station.Credentials = credentials
 		}
 	}
@@ -224,12 +221,12 @@ func (station *Station) Post(request *rest.Request) rest.Result {
 		newID := uuid.New()
 		station.ID = &newID
 	}
-	if result := station.validate(); result.HasErrorOrCode() {
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := station.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -242,17 +239,17 @@ func (station *Station) Post(request *rest.Request) rest.Result {
 func (station *Station) Put(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return rest.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	if *station.ID != id {
-		return rest.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := station.validate(); result.HasErrorOrCode() {
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -263,54 +260,59 @@ func (station *Station) Put(request *rest.Request) rest.Result {
 func (station *Station) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return rest.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	station.ID = &id
 	exists, err := station.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("stations", "id", "=", station.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("stations", "id", "=", station.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (station *Station) create() rest.Result {
 	if exists, err := station.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("stations", station)
-	result.Error = err
-	return result
+	dbResult := db.Insert("stations", station)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (station *Station) createOrUpdate() rest.Result {
 	exists, existsErr := station.exists()
 	if existsErr != nil {
-		return rest.Result{Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("stations", station, "id", "=", station.ID)
-		result.Error = err
-		return result
+		dbResult = db.Update("stations", station, "id", "=", station.ID)
+	} else {
+		dbResult = db.Insert("stations", station)
 	}
-
-	result, err := db.Insert("stations", station)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (station *Station) exists() (bool, error) {
@@ -344,14 +346,14 @@ func (station *Station) validate() rest.Result {
 	}
 
 	if exists, err := station.existsTrackShortname(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
 		return rest.Result{Code: 409, Message: "combination of track and shortname already exists"}
 	}
 
 	track := Track{ID: station.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
@@ -363,7 +365,7 @@ func (station *Station) validate() rest.Result {
 		}
 		timeslot := TimeslotForAdmins{ID: &timeslotID}
 		if exists, err := timeslot.existsWithTrack(station.TrackID); err != nil {
-			return rest.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if !exists {
 			return rest.Result{Code: 400, Message: "referenced timeslot does not exist or has wrong track type"}
 		}
@@ -371,7 +373,7 @@ func (station *Station) validate() rest.Result {
 
 	if station.TimeslotID != "" {
 		if exists, err := station.existsTimeslot(); err != nil {
-			return rest.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if exists {
 			return rest.Result{Code: 400, Message: "another station is already bound to the referenced timeslot"}
 		}
@@ -433,11 +435,11 @@ func (createRequest *StationProvisionRequest) Post(request *rest.Request) rest.R
 func (station *Station) Provision(trackID string) rest.Result {
 	// Load track
 	var track Track
-	found, selectErr := db.Select(&track, "tracks", "id", "=", trackID)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.Select(&track, "tracks", "id", "=", trackID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "track not found"}
 	}
 
@@ -457,7 +459,7 @@ func (station *Station) Provision(trackID string) rest.Result {
 		var count int
 		currentRowErr := currentRow.Scan(&count)
 		if currentRowErr != nil {
-			return rest.Result{Error: currentRowErr}
+			return rest.Result{Code: 500, Error: currentRowErr}
 		}
 		if count+1 > maxStations {
 			return rest.Result{Code: 400, Message: "too many current stations for dynamic track"}
@@ -469,26 +471,26 @@ func (station *Station) Provision(trackID string) rest.Result {
 	serviceBody := []byte(`{"username":"tech","uid":"techo","task_type":"1"}`)
 	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(serviceBody))
 	if serviceRequestErr != nil {
-		return rest.Result{Error: serviceRequestErr}
+		return rest.Result{Code: 500, Error: serviceRequestErr}
 	}
 	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
 	serviceRequest.Header.Set("Content-Type", "application/json")
 	serviceClient := &http.Client{}
 	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
 	if serviceResponseErr != nil {
-		return rest.Result{Error: serviceResponseErr}
+		return rest.Result{Code: 500, Error: serviceResponseErr}
 	}
 	defer serviceResponse.Body.Close()
 	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
-		return rest.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+		return rest.Result{Code: 500, Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
 	}
 	serviceResponseBody, serviceResponseBodyErr := ioutil.ReadAll(serviceResponse.Body)
 	if serviceResponseBodyErr != nil {
-		return rest.Result{Error: serviceResponseBodyErr}
+		return rest.Result{Code: 500, Error: serviceResponseBodyErr}
 	}
 	var serviceData serverCreateStationResponse
 	if err := json.Unmarshal(serviceResponseBody, &serviceData); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	log.Tracef("VM service created new instance: %v", serviceData.ID)
 
@@ -505,12 +507,12 @@ func (station *Station) Provision(trackID string) rest.Result {
 	// Markdown
 	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Address (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
 		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Address)
-	if result := station.validate(); result.HasErrorOrCode() {
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := station.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
@@ -528,11 +530,11 @@ func (destroyRequest *StationTerminateRequest) Post(request *rest.Request) rest.
 
 	// Get station
 	var station Station
-	stationFound, stationSelectErr := db.Select(&station, "stations", "id", "=", id)
-	if stationSelectErr != nil {
-		return rest.Result{Error: stationSelectErr}
+	stationDBResult := db.Select(&station, "stations", "id", "=", id)
+	if stationDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: stationDBResult.Error}
 	}
-	if !stationFound {
+	if !stationDBResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
@@ -549,11 +551,11 @@ func (station *Station) Terminate() rest.Result {
 
 	// Get track
 	var track Track
-	trackFound, trackSelectErr := db.Select(&track, "tracks", "id", "=", station.TrackID)
-	if trackSelectErr != nil {
-		return rest.Result{Error: trackSelectErr}
+	trackDBResult := db.Select(&track, "tracks", "id", "=", station.TrackID)
+	if trackDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: trackDBResult.Error}
 	}
-	if !trackFound {
+	if !trackDBResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "track not found"}
 	}
 
@@ -570,17 +572,17 @@ func (station *Station) Terminate() rest.Result {
 	serviceURL := fmt.Sprintf("%v/api/entry/%v", trackConfig.BaseURL, station.Shortname)
 	serviceRequest, serviceRequestErr := http.NewRequest("DELETE", serviceURL, nil)
 	if serviceRequestErr != nil {
-		return rest.Result{Error: serviceRequestErr}
+		return rest.Result{Code: 500, Error: serviceRequestErr}
 	}
 	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
 	serviceClient := &http.Client{}
 	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
 	if serviceResponseErr != nil {
-		return rest.Result{Error: serviceResponseErr}
+		return rest.Result{Code: 500, Error: serviceResponseErr}
 	}
 	defer serviceResponse.Body.Close()
 	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
-		return rest.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+		return rest.Result{Code: 500, Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
 	}
 	log.Tracef("VM service destroyed instance: %v", station.ID)
 
@@ -588,7 +590,9 @@ func (station *Station) Terminate() rest.Result {
 	station.Status = StationStatusTerminated
 	station.TimeslotID = ""
 
-	result, err := db.Update("stations", station, "id", "=", station.ID)
-	result.Error = err
-	return result
+	dbResult := db.Update("stations", station, "id", "=", station.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }

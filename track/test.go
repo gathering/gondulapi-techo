@@ -79,11 +79,10 @@ func (tests *Tests) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
-	selectErr := db.SelectMany(tests, "tests", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(tests, "tests", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -93,12 +92,9 @@ func (tests *Tests) Post(request *rest.Request) rest.Result {
 	totalResult := rest.Result{}
 	for _, test := range *tests {
 		result := test.Post(request)
-		if result.HasErrorOrCode() {
+		if !result.IsOk() {
 			return result
 		}
-		totalResult.Affected += result.Affected
-		totalResult.Ok += result.Ok
-		totalResult.Failed += result.Failed
 	}
 
 	return totalResult
@@ -126,25 +122,20 @@ func (tests *Tests) Delete(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
-	selectErr := db.SelectMany(tests, "tests", whereArgs...)
-	if selectErr != nil {
-		return rest.Result{Error: selectErr}
+	dbResult := db.SelectMany(tests, "tests", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
 
 	// Delete one by one, exit on first error
-	summedResult := rest.Result{}
 	for _, test := range *tests {
-		result, err := db.Delete("tests", "id", "=", test.ID)
-		if err != nil {
-			summedResult.Error = err
-			return summedResult
+		dbResult := db.Delete("tests", "id", "=", test.ID)
+		if dbResult.IsFailed() {
+			return rest.Result{Code: 500, Error: dbResult.Error}
 		}
-		summedResult.Affected += result.Affected
-		summedResult.Ok += result.Ok
-		summedResult.Failed += result.Failed
 	}
 
-	return summedResult
+	return rest.Result{}
 }
 
 // Get gets a single test.
@@ -154,11 +145,11 @@ func (test *Test) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(test, "tests", "id", "=", id)
-	if err != nil {
-		return rest.Result{Error: err}
+	dbResult := db.Select(test, "tests", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
+	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
@@ -174,21 +165,21 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 	now := time.Now()
 	test.Timestamp = &now
 
-	if result := test.validate(); result.HasErrorOrCode() {
+	if result := test.validate(); !result.IsOk() {
 		return result
 	}
 
 	// Bind to the active timeslot, if any
 	var station Station
-	stationFound, stationErr := db.Select(&station, "stations",
+	stationDBResult := db.Select(&station, "stations",
 		"track", "=", test.TrackID,
 		"shortname", "=", test.StationShortname,
 	)
-	if stationErr != nil {
-		return rest.Result{Error: stationErr}
+	if stationDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: stationDBResult.Error}
 	}
-	if !stationFound {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+	if !stationDBResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 	// Accept timeslot ID as-is as the station is already using it
 	test.TimeslotID = station.TimeslotID
@@ -197,7 +188,7 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot = '')",
 		test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.TimeslotID)
 	if deleteErr != nil {
-		return rest.Result{Error: deleteErr}
+		return rest.Result{Code: 500, Error: deleteErr}
 	}
 
 	var totalResult rest.Result
@@ -209,22 +200,16 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 		newCloneID := uuid.New()
 		cloneTest.ID = &newCloneID
 		result := cloneTest.create()
-		if result.HasErrorOrCode() {
+		if !result.IsOk() {
 			return result
 		}
-		totalResult.Affected += result.Affected
-		totalResult.Ok += result.Ok
-		totalResult.Failed += result.Failed
 	}
 
 	// Save original (with timeslot of one was found)
 	result := test.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
-	totalResult.Affected += result.Affected
-	totalResult.Ok += result.Ok
-	totalResult.Failed += result.Failed
 
 	totalResult.Code = 201
 	totalResult.Location = fmt.Sprintf("%v/test/%v", config.Config.SitePrefix, test.ID)
@@ -235,37 +220,41 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 func (test *Test) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return rest.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
 	if uuidError != nil {
-		return rest.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	test.ID = &id
 	exists, err := test.exists()
 	if err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return rest.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("tests", "id", "=", test.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("tests", "id", "=", test.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (test *Test) create() rest.Result {
 	if exists, err := test.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return rest.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("tests", test)
-	result.Error = err
-	return result
+	dbResult := db.Insert("tests", test)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (test *Test) exists() (bool, error) {
@@ -300,19 +289,19 @@ func (test *Test) validate() rest.Result {
 
 	track := Track{ID: test.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 	task := Task{TrackID: test.TrackID, Shortname: test.TaskShortname}
 	if exists, err := task.existsShortname(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced task does not exist"}
 	}
 	station := Station{TrackID: test.TrackID, Shortname: test.StationShortname}
 	if exists, err := station.existsShortname(); err != nil {
-		return rest.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced station does not exist"}
 	}
@@ -323,7 +312,7 @@ func (test *Test) validate() rest.Result {
 		}
 		timeslot := TimeslotForAdmins{ID: &timeslotID}
 		if exists, err := timeslot.exists(); err != nil {
-			return rest.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if !exists {
 			return rest.Result{Code: 400, Message: "referenced timeslot does not exist"}
 		}

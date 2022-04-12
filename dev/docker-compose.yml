@@ -1,7 +1,7 @@
 version: '3.7'
 
 services:
-  gondulapi:
+  techo:
     image: goldulapi-techo:latest
     build: ..
     #user: 1000:1000
@@ -17,7 +17,7 @@ services:
   db:
     image: postgres:13
     environment:
-      - POSTGRES_USER=gondulapi
+      - POSTGRES_USER=techo
       - POSTGRES_PASSWORD=lolkek
     volumes:
       #- ./db:/var/lib/postgresql/data:rw
