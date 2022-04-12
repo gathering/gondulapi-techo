@@ -136,14 +136,11 @@ func Start() {
 	serveMux.Handle("/", defaultReceiverSet)
 
 	// Receiver handlers
-	if receiverSets != nil {
-		for _, set := range receiverSets {
-			set.pathPrefix = config.Config.SitePrefix + set.pathPrefix
-
-			serveMux.Handle(set.pathPrefix, set)
-			for _, receiver := range set.receivers {
-				log.Infof("Added receiver [%v][%v]' for [%T].", set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
-			}
+	for _, set := range receiverSets {
+		set.pathPrefix = config.Config.SitePrefix + set.pathPrefix
+		serveMux.Handle(set.pathPrefix, set)
+		for _, receiver := range set.receivers {
+			log.Infof("Added receiver [%v][%v]' for [%T].", set.pathPrefix, receiver.pathPattern.String(), receiver.allocator())
 		}
 	}
 

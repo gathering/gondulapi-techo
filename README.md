@@ -41,21 +41,12 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 
 ### General
 
-- Test new error.
-- Remove global state.
 - Add docs comment to all packages, with consistent formatting.
-- Avoid weird dependencies between packages.
-- Cleanup receiver after partial refactoring and general lack of comments.
-- Bump Go and repo versions.
-- Update file header license.
+- Bump Go and dependency versions.
 - Implement OpenID Connect or OAuth 2.0.
 - Cleanup admin-by-path stuff and associated "ForAdmin" stuff where admin stuff was on separate endpoints.
 - From "database_string" to actual parameters.
-- Add "REST" prefix to all Get/Put/Post/Delete/Update.
 - Order results by some attribute for certain endpoints.
-- Give init() a more descriptive name. restInit()?
-- Make sure REST result errors aren't shown to users. Add generic message if missing.
-- Add root redirect.
 - Add periodic cleanup of expired tokens.
 
 ### Desirable Changes from 2021
