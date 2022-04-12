@@ -55,8 +55,8 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 - Order results by some attribute for certain endpoints.
 - Give init() a more descriptive name. restInit()?
 - Make sure REST result errors aren't shown to users. Add generic message if missing.
-- Server tracks: task_type=1 for classic, task_type=2 for gondul.
 - Add root redirect.
+- Add periodic cleanup of expired tokens.
 
 ### Desirable Changes from 2021
 

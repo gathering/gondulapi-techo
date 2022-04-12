@@ -40,6 +40,7 @@ var Config struct {
 // ServerTrackConfig contains the static config for a single server track.
 type ServerTrackConfig struct {
 	BaseURL      string `json:"base_url"`
+	TaskType     string `json:"task_type"`
 	MaxInstances int    `json:"max_instances"`
 	AuthUsername string `json:"auth_username"`
 	AuthPassword string `json:"auth_password"`

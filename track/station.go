@@ -80,6 +80,12 @@ type StationProvisionRequest struct {
 type StationTerminateRequest struct {
 }
 
+type serverCreateStationRequest struct {
+	Username string `json:"username"`
+	UID      string `json:"uid"`
+	TaskType string `json:"task_type"`
+}
+
 type serverCreateStationResponse struct {
 	ID              int    `json:"id"`
 	FQDN            string `json:"fqdn"`
@@ -468,8 +474,16 @@ func (station *Station) Provision(trackID string) rest.Result {
 
 	// Call station service
 	serviceURL := trackConfig.BaseURL + "/api/entry/new"
-	serviceBody := []byte(`{"username":"tech","uid":"techo","task_type":"1"}`)
-	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(serviceBody))
+	serviceRequestData := serverCreateStationRequest{
+		Username: "tech",
+		UID:      "techo",
+		TaskType: trackConfig.TaskType,
+	}
+	requestJSON, requestJSONError := json.Marshal(serviceRequestData)
+	if requestJSONError != nil {
+		return rest.Result{Code: 500, Error: requestJSONError}
+	}
+	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(requestJSON))
 	if serviceRequestErr != nil {
 		return rest.Result{Code: 500, Error: serviceRequestErr}
 	}
@@ -488,25 +502,25 @@ func (station *Station) Provision(trackID string) rest.Result {
 	if serviceResponseBodyErr != nil {
 		return rest.Result{Code: 500, Error: serviceResponseBodyErr}
 	}
-	var serviceData serverCreateStationResponse
-	if err := json.Unmarshal(serviceResponseBody, &serviceData); err != nil {
+	var responseData serverCreateStationResponse
+	if err := json.Unmarshal(serviceResponseBody, &responseData); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	}
-	log.Tracef("VM service created new instance: %v", serviceData.ID)
+	log.Tracef("VM service created new instance: %v", responseData.ID)
 
 	// Create station
 	newID := uuid.New()
 	station.ID = &newID
 	station.TrackID = trackID
-	station.Shortname = strconv.Itoa(serviceData.ID)
-	station.Name = fmt.Sprintf("Station #%v", serviceData.ID)
+	station.Shortname = strconv.Itoa(responseData.ID)
+	station.Name = fmt.Sprintf("Station #%v", responseData.ID)
 	station.Status = StationStatusMaintenance
 	// Markdown
 	station.Credentials = fmt.Sprintf("**Username**: %v\n\n**Password**: %v\n\n**Public address (IPv4)**: %v\n\n**Public address (IPv6)**: %v\n\n**SSH port**: %v",
-		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
+		responseData.Username, responseData.Password, responseData.IPv4Address, responseData.IPv6Address, responseData.SSHPort)
 	// Markdown
 	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Address (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
-		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Address)
+		responseData.FQDN, responseData.Zone, responseData.VLANID, responseData.VLANIPv4Address)
 	if result := station.validate(); !result.IsOk() {
 		return result
 	}
