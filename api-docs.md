@@ -94,15 +94,15 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 **Show timeslots without times (new registration)**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?no-time&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?no-time&pretty"`
 
 **Show timeslots with stations (currently in use)**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?assigned-station&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?assigned-station&pretty"`
 
 **Show timeslots with times and waiting for stations**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
 
 ## Examples
 

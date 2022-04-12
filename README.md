@@ -16,7 +16,7 @@ You don't have to use Docker or Docker Compose, but it makes it easier.
 
 1. (First time) Create local config: `cp dev/config.json dev/config.local.json`
 1. (First time) Start the DB (detatched): `docker-compose -f dev/docker-compose.yml up -d db`
-1. (First time) Apply schema to DB: `dev/prepare-db.sh`
+1. (First time) Apply schema to DB: `dev/db-prepare.sh`
 1. Build and start everything: `docker-compose -f dev/docker-compose.yml up --build [-d]`
 1. Seed example data: `dev/seed.sh`
 1. Profit.
