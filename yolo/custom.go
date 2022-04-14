@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package yolo
 
 import (
+	"database/sql"
+
 	"github.com/gathering/tech-online-backend/db"
 	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
@@ -105,6 +107,9 @@ func (t4 *StationTasksTests) Get(request *rest.Request) rest.Result {
 	var track Track
 	trackRow := db.DB.QueryRow("SELECT id,type,name FROM tracks WHERE id = $1", trackID)
 	trackErr := trackRow.Scan(&track.ID, &track.Type, &track.Name)
+	if trackErr == sql.ErrNoRows {
+		return rest.Result{}
+	}
 	if trackErr != nil {
 		return rest.Result{Error: trackErr}
 	}
