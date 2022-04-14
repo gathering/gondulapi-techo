@@ -93,8 +93,7 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 		log.WithError(oauth2TokenExchangeErr).Trace("OAuth2: Token exchange failed")
 		return Result{Code: 400, Message: "IdP didn't accept the provided code"}
 	}
-	// TODO
-	oauth2AccessToken := oauth2Token.AccessToken
+	// TODO use refresh token and expiry
 	log.Tracef("Got token: %v", oauth2Token)
 
 	// Get profile from Unicorn
@@ -102,7 +101,7 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	if httpRequestErr != nil {
 		return Result{Code: 500, Error: httpRequestErr}
 	}
-	httpRequest.Header.Set("Authorization", "Bearer "+oauth2AccessToken)
+	httpRequest.Header.Set("Authorization", "Bearer "+oauth2Token.AccessToken)
 	client := &http.Client{}
 	httpResponse, httpResponseErr := client.Do(httpRequest)
 	if httpResponseErr != nil {
@@ -120,16 +119,15 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 		return Result{Code: 500}
 	}
 	var profile *unicornProfile
-	if err := json.Unmarshal(responseBody, profile); err != nil {
+	if err := json.Unmarshal(responseBody, &profile); err != nil {
 		log.WithError(err).Warn("OAuth2: Failed to unmarshal Unicorn profile")
 		return Result{Code: 500}
 	}
-
 	// TODO
-	log.Tracef("OAuth2 profile data (demo): %v", string(responseBody))
-	log.Tracef("Unicorn profile data (demo): %v", profile)
+	log.Tracef("Got profile: %v", profile)
 
 	// Update user
+	log.Tracef("Updating user") // TODO
 	user := getUserByID(profile.ID)
 	if user == nil {
 		user = &User{ID: &profile.ID}
@@ -140,20 +138,26 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	if user.Role == "" {
 		user.Role = DefaultUserRole
 	}
+	log.Tracef("Got user: %v", user)
 	if err := user.save(); err != nil {
 		log.WithError(err).Warn("OAuth2: Failed to save new or updated user")
 		return Result{Code: 500}
 	}
 
 	// Create access token
+	log.Tracef("Creating access token") // TODO
 	token, tokenErr := CreateUserAccessToken(user)
 	if tokenErr != nil {
 		log.WithError(tokenErr).Warn("OAuth2: Failed to create new access token for user")
 		return Result{Code: 500}
 	}
 
+	log.Tracef("Done!") // TODO
 	response.Token = *token
 	response.User = *user
+	rawText, _ := json.Marshal(response)
+	log.Tracef("Responding (direct): %v", response) // TODO
+	log.Tracef("Responding (JSON): %v", rawText)    // TODO
 	return Result{}
 }
 

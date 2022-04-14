@@ -16,7 +16,8 @@ CREATE TABLE public.users (
     "id" text NOT NULL UNIQUE,
     "username" text NOT NULL UNIQUE,
     "display_name" text NOT NULL,
-    "email_address" text NOT NULL
+    "email_address" text NOT NULL,
+    "role" text NOT NULL
 );
 CREATE UNIQUE INDEX public_users_id_index ON public.users (id);
 CREATE UNIQUE INDEX public_users_username_index ON public.users (username);

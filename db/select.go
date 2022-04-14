@@ -256,7 +256,7 @@ func Exists(table string, searcher ...interface{}) Result {
 		return Result{Error: newErrorWithCause("Exists(): failed, unable to build search", err)}
 	}
 	searchstr, searcharr := buildWhere(0, search)
-	q := fmt.Sprintf("SELECT * FROM %s WHERE %s LIMIT 1", table, searchstr)
+	q := fmt.Sprintf("SELECT * FROM %s %s LIMIT 1", table, searchstr)
 	log.WithField("query", q).Trace("Exists()")
 	rows, err := DB.Query(q, searcharr...)
 	if err != nil {

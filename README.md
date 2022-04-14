@@ -29,15 +29,6 @@ You don't have to use Docker or Docker Compose, but it makes it easier.
 
 - This does not feature any kind of automatic DB migration, so you need to manually migrate when upgrading with an existing database (re-applying the schema file for new tables and manually editing existing tables).
 
-## Changes (2022)
-
-Mainly so frontend-people and such can see what changed. This is not a changelog. Also, this repo is not versioned. Yet. lol.
-
-- Rename Go module from `github.com/gathering/gondulapi` to `github.com/gathering/tech-online-backend` (using import alias `techo`).
-- Remove temporary, custom endpoints (`/custom/track-stations/` and `/custom/station-tasks-tests/`).
-- Changed config structure.
-- Replace user token ("secret" from SSO) with non-secret UUID.
-
 ## TODO
 
 ### General
@@ -51,6 +42,7 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 - Add periodic cleanup of expired tokens.
 - Normalize UUIDs from path/query params before comparing in database to avoid missing a match due to case sensitivity for something insensitive.
 - Create permanent access tokens through API.
+- Remove temporary, custom endpoints (`/custom/track-stations/` and `/custom/station-tasks-tests/`).
 
 ### Desirable Changes from 2021
 

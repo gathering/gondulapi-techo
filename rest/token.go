@@ -33,10 +33,8 @@ import (
 )
 
 const tokenLengthBytes = 32
-const encodedTokenLengthBytes = 44 // Depends on tokenLengthBytes
-
-// TODO increase to some reasonable amount of time
-const tokenExpirationSeconds = 300
+const encodedTokenLengthBytes = 44              // Depends on tokenLengthBytes
+const tokenExpirationSeconds = 7 * 24 * 60 * 60 // A week
 
 // Role defines a role for users and tokens.
 type Role string

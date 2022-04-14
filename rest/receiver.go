@@ -371,6 +371,7 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 			return
 		}
 		result = post.Post(&request)
+		handlerData = post
 	case "PUT":
 		defaultCode = 200
 		if len(input.data) > 0 {

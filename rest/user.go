@@ -104,18 +104,21 @@ func (user *User) Get(request *Request) Result {
 
 // Gets a user by ID if it exists, returns nil if not.
 func getUserByID(id uuid.UUID) *User {
-	var user *User
-	dbResult := db.Select(user, "users", "id", "=", id)
+	var user User
+	dbResult := db.Select(&user, "users", "id", "=", id)
 	if dbResult.IsFailed() {
 		log.WithError(dbResult.Error).Error("Failed to load user which may or may not not exist")
 		return nil
 	}
-	return user
+	if !dbResult.IsSuccess() {
+		return nil
+	}
+	return &user
 }
 
 // Saves the user.
 func (user *User) save() error {
-	dbResult := db.Insert("users", user)
+	dbResult := db.Upsert("users", user, "id", "=", user.ID)
 	if dbResult.IsFailed() {
 		return dbResult.Error
 	}
@@ -157,12 +160,12 @@ func (user *User) save() error {
 // }
 
 func loadUser(id uuid.UUID) (*User, error) {
-	var user *User
-	dbResult := db.Select(user, "users", "id", "=", id)
+	var user User
+	dbResult := db.Select(&user, "users", "id", "=", id)
 	if dbResult.IsFailed() {
 		return nil, dbResult.Error
 	}
-	return user, nil
+	return &user, nil
 }
 
 func (user *User) createOrUpdate() Result {
