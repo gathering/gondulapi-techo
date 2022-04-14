@@ -47,8 +47,9 @@ type Track struct {
 type Tracks []*Track
 
 func init() {
-	rest.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
-	rest.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
+	// TODO
+	// rest.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
+	// rest.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
 }
 
 // Get gets multiple tracks.

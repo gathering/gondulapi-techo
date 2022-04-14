@@ -51,8 +51,9 @@ type Test struct {
 type Tests []*Test
 
 func init() {
-	rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
-	rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
+	// TODO
+	// rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
+	// rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
 }
 
 // Get gets multiple tests.

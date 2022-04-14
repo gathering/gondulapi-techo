@@ -49,12 +49,26 @@ Example login response:
 }
 ```
 
+### Access Tokens
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/access_tokens/[?user=<>][&role=<>]` | `GET` | Get access tokens the user has access to. | Self or admin. |
+| `/access_token/<id>` | `GET` | Get an access token. | Self or admin. |
+
 ### Users
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
 | `/users/[?username=<>]` | `GET` | Get users. | Self or admin. |
 | `/user/<id>` | `GET` | Create or update a user. | Self or admin. |
+
+### Custom
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/custom/track-stations/<track-id>/` | `GET` | Get track info and all active stations for the specified track ID. | Public. |
+| `/custom/station-tasks-tests/<track-id>/<station-shortname>/` | `GET` | Get track info and tasks and tests for the specified track ID and station shortname. | Public. |
 
 ## Old Endpoints
 
@@ -118,13 +132,6 @@ Timeslots are the participation objects for a user and a track. The start time, 
 | - | - | - | - |
 | `/tests/[?track=<>][&task-shortname=<>][&shortname=<>][&station-shortname=<>][&timeslot=<>][&latest]` | `GET`, `POST`, `DELETE` | Get/post/delete tests. If using mass delete, consider making a backup first as a misspelled query arg can nuke the entire table. | Public (read) and admin. |
 | `/test/[id]` | `GET`, `POST`, `DELETE` | Get/post/delete a test. | Public (read) and admin. |
-
-### Custom
-
-| Endpoint | Methods | Description | Auth |
-| - | - | - | - |
-| `/custom/track-stations/<track-id>/` | `GET` | Get track info and all active stations for the specified track ID. | Public. |
-| `/custom/station-tasks-tests/<track-id>/<station-shortname>/` | `GET` | Get track info and tasks and tests for the specified track ID and station shortname. | Public. |
 
 ## Useful Requests
 

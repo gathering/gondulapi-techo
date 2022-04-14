@@ -148,7 +148,7 @@ func (family *DocumentFamily) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	dbResult := db.Delete("document_families", "id", family.ID)
+	dbResult := db.Delete("document_families", "id", "=", family.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}

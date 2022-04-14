@@ -55,8 +55,9 @@ type stationTasksTestsTask struct {
 }
 
 func init() {
-	rest.AddHandler("/custom/track-stations/", "^(?P<track_id>[^/]+)/$", func() interface{} { return &TrackStations{} })
-	rest.AddHandler("/custom/station-tasks-tests/", "^(?P<track_id>[^/]+)/(?P<station_shortname>[^/]+)/$", func() interface{} { return &StationTasksTests{} })
+	// TODO
+	// rest.AddHandler("/custom/track-stations/", "^(?P<track_id>[^/]+)/$", func() interface{} { return &TrackStations{} })
+	// rest.AddHandler("/custom/station-tasks-tests/", "^(?P<track_id>[^/]+)/(?P<station_shortname>[^/]+)/$", func() interface{} { return &StationTasksTests{} })
 }
 
 // Get creates a a big mess of data consisting of a track and all active stations for it.

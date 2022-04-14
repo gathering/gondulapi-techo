@@ -41,8 +41,9 @@ type Oauth2LoginResponse struct {
 
 // Oauth2InfoResponse is the object for OAuth2 info requests.
 type Oauth2InfoResponse struct {
-	ClientID string `json:"client_id"`
-	AuthURL  string `json:"auth_url"`
+	ClientID    string `json:"client_id"`
+	AuthURL     string `json:"auth_url"`
+	RedirectURL string `json:"redirect_url"`
 }
 
 type unicornProfile struct {
@@ -61,6 +62,7 @@ func init() {
 func (response *Oauth2InfoResponse) Get(request *Request) Result {
 	response.ClientID = config.Config.OAuth2.ClientID
 	response.AuthURL = config.Config.OAuth2.AuthURL
+	response.RedirectURL = config.Config.OAuth2.RedirectURL
 	return Result{}
 }
 
@@ -76,12 +78,12 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 
 	// Check for alternative redirect URL (only allows variations with host=localhost for testing purposes)
 	rawNewRedurectURL, redurectURLFound := request.QueryArgs["redirect_url"]
-	if redurectURLFound && rawNewRedurectURL != oauth2Config.RedirectURL {
-		newRedurectURL, rawNewRedurectURL := url.Parse(rawNewRedurectURL)
-		if rawNewRedurectURL != nil {
+	if redurectURLFound {
+		newRedurectURL, newRedurectURLErr := url.Parse(rawNewRedurectURL)
+		if newRedurectURLErr != nil {
 			return Result{Code: 400, Message: "Invalid redirect URL provided"}
 		}
-		if newRedurectURL.Hostname() != "localhost" {
+		if rawNewRedurectURL != oauth2Config.RedirectURL && newRedurectURL.Hostname() != "localhost" {
 			return Result{Code: 400, Message: "Illegal redirect URL provided"}
 		}
 		oauth2Config.RedirectURL = newRedurectURL.String()
@@ -93,8 +95,6 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 		log.WithError(oauth2TokenExchangeErr).Trace("OAuth2: Token exchange failed")
 		return Result{Code: 400, Message: "IdP didn't accept the provided code"}
 	}
-	// TODO use refresh token and expiry
-	log.Tracef("Got token: %v", oauth2Token)
 
 	// Get profile from Unicorn
 	httpRequest, httpRequestErr := http.NewRequest("GET", config.Config.Unicorn.ProfileURL, nil)
@@ -123,11 +123,8 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 		log.WithError(err).Warn("OAuth2: Failed to unmarshal Unicorn profile")
 		return Result{Code: 500}
 	}
-	// TODO
-	log.Tracef("Got profile: %v", profile)
 
 	// Update user
-	log.Tracef("Updating user") // TODO
 	user := getUserByID(profile.ID)
 	if user == nil {
 		user = &User{ID: &profile.ID}
@@ -136,7 +133,7 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	user.DisplayName = profile.DisplayName
 	user.EmailAddress = profile.EmailAddress
 	if user.Role == "" {
-		user.Role = DefaultUserRole
+		user.Role = RoleParticipant
 	}
 	log.Tracef("Got user: %v", user)
 	if err := user.save(); err != nil {
@@ -145,19 +142,14 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	}
 
 	// Create access token
-	log.Tracef("Creating access token") // TODO
 	token, tokenErr := CreateUserAccessToken(user)
 	if tokenErr != nil {
 		log.WithError(tokenErr).Warn("OAuth2: Failed to create new access token for user")
 		return Result{Code: 500}
 	}
 
-	log.Tracef("Done!") // TODO
 	response.Token = *token
 	response.User = *user
-	rawText, _ := json.Marshal(response)
-	log.Tracef("Responding (direct): %v", response) // TODO
-	log.Tracef("Responding (JSON): %v", rawText)    // TODO
 	return Result{}
 }
 

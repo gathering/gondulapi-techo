@@ -43,8 +43,9 @@ type Task struct {
 type Tasks []*Task
 
 func init() {
-	rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
-	rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
+	// TODO
+	// rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
+	// rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
 }
 
 // Get gets multiple tasks.

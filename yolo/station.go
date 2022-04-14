@@ -99,12 +99,13 @@ type serverCreateStationResponse struct {
 }
 
 func init() {
+	// TODO
 	// rest.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
-	rest.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
+	// rest.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
 	// rest.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
-	rest.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
-	rest.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
-	rest.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
+	// rest.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
+	// rest.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
+	// rest.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
 }
 
 // Get gets multiple stations. For admins.

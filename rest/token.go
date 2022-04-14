@@ -24,6 +24,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/gathering/tech-online-backend/config"
@@ -42,6 +43,8 @@ type Role string
 const (
 	// RoleInvalid - Invalid.
 	RoleInvalid Role = ""
+	// RoleGuest - No special access, for non-authenticated requests.
+	RoleGuest Role = "guest"
 	// RoleParticipant - Access to participate (i.e. logged in). Valid for user tokens only.
 	RoleParticipant Role = "participant"
 	// RoleOperator - Access to most stuff, but can't create new tracks, push status, etc.
@@ -51,9 +54,6 @@ const (
 	// RoleTester - Access to push test data, for status scripts. Valid for non-user tokens only.
 	RoleTester Role = "tester"
 )
-
-// DefaultUserRole specified the default role for a user.
-const DefaultUserRole = RoleParticipant
 
 // AccessTokenEntry is a collections of access things used for the client to authenticate itself and for the backend to know more about the client.
 type AccessTokenEntry struct {
@@ -129,6 +129,7 @@ func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
 		CreationTime:   time.Now(),
 		ExpirationTime: time.Now().Add(tokenExpirationSeconds * time.Second),
 		IsStatic:       false,
+		Comment:        fmt.Sprintf("OAuth2: %v", user.Username),
 		User:           user,
 	}
 
@@ -153,13 +154,13 @@ func LoadAccessTokenByKey(key string) *AccessTokenEntry {
 	}
 
 	// Get from DB, if created and not expired
-	var token *AccessTokenEntry
+	var token AccessTokenEntry
 	now := time.Now()
 	var whereArgs []interface{}
 	whereArgs = append(whereArgs, "key", "=", key)
 	whereArgs = append(whereArgs, "creation_time", "<=", now)
 	whereArgs = append(whereArgs, "expiration_time", ">=", now)
-	dbResult := db.SelectMany(token, "access_tokens", whereArgs)
+	dbResult := db.Select(&token, "access_tokens", whereArgs...)
 	if dbResult.IsFailed() {
 		log.WithError(dbResult.Error).Error("Failed to select access token from DB")
 		return nil
@@ -181,7 +182,33 @@ func LoadAccessTokenByKey(key string) *AccessTokenEntry {
 		}
 	}
 
-	return token
+	return &token
+}
+
+// MakeGuestAccessToken creates an empty-ish guest access token, such that all requests (authenticated or not) have a role.
+func MakeGuestAccessToken() *AccessTokenEntry {
+	id, _ := uuid.FromBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+	role := RoleGuest
+	time := time.Now()
+	return &AccessTokenEntry{
+		ID:             id,
+		Key:            "",
+		OwnerUserID:    nil,
+		NonUserRole:    &role,
+		CreationTime:   time,
+		ExpirationTime: time,
+		IsStatic:       false,
+		Comment:        "Guest",
+	}
+}
+
+// PurgeExpiredAccessTokens deletes all expired tokens. Should be called periodically.
+func PurgeExpiredAccessTokens() {
+	now := time.Now()
+	dbResult := db.Delete("access_tokens", "expiration_time", "<=", now)
+	if dbResult.IsFailed() {
+		log.WithError(dbResult.Error).Error("Failed to purge old access tokens")
+	}
 }
 
 // Generate a Base64-encoded token key using a secure amount of random bytes.
@@ -212,17 +239,18 @@ func (token *AccessTokenEntry) validateInternal() string {
 // GetRole returns the non-user role if non-user token or the user role if user token.
 // Assumes the user is already loaded if user token.
 // Returns an empty string (the invalid role) if inconsistent token.
-func (token *AccessTokenEntry) GetRole() *Role {
+func (token *AccessTokenEntry) GetRole() Role {
 	if token.User != nil {
-		return &token.User.Role
+		return token.User.Role
 	}
-	return token.NonUserRole
+	if token.NonUserRole != nil {
+		return *token.NonUserRole
+	}
+	return RoleInvalid
 }
 
 // Get gets multiple access tokens.
 func (tokens *AccessTokenEntries) Get(request *Request) Result {
-	// TODO access control
-	// TODO return only tokens the user has access to
 	var whereArgs []interface{}
 	if userID, ok := request.QueryArgs["user"]; ok {
 		whereArgs = append(whereArgs, "user", "=", userID)
@@ -230,13 +258,30 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	if role, ok := request.QueryArgs["role"]; ok {
 		whereArgs = append(whereArgs, "role", "=", role)
 	}
+	if rawStatic, ok := request.QueryArgs["static"]; ok {
+		static, err := strconv.ParseBool(rawStatic)
+		if err == nil {
+			whereArgs = append(whereArgs, "static", "=", static)
+		}
+	}
+
+	// Limit to only self if not operator/admin
+	role := request.AccessToken.GetRole()
+	if role != RoleAdmin {
+		if request.AccessToken.User != nil {
+			whereArgs = append(whereArgs, "user", "=", request.AccessToken.User.ID)
+		} else {
+			// No access, just leave
+			return Result{}
+		}
+	}
 
 	dbResult := db.SelectMany(tokens, "access_tokens", whereArgs...)
 	if dbResult.IsFailed() {
 		return Result{Code: 500, Error: dbResult.Error}
 	}
 
-	// Remove key from response
+	// Hide key
 	for _, token := range *tokens {
 		token.Key = ""
 	}
@@ -246,11 +291,20 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 
 // Get gets a single access token.
 func (token *AccessTokenEntry) Get(request *Request) Result {
-	// TODO access control
-	// TODO return only tokens the user has access to
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return Result{Code: 400, Message: "missing ID"}
+	}
+
+	// Check if self or operator/admin
+	role := request.AccessToken.GetRole()
+	if role != RoleAdmin {
+		if request.AccessToken.User != nil && request.AccessToken.User.ID.String() != id {
+			return Result{Code: 403, Message: "Access denied"}
+		}
+		if request.AccessToken.User == nil {
+			return Result{Code: 403, Message: "Access denied"}
+		}
 	}
 
 	dbResult := db.Select(token, "access_tokens", "id", "=", id)
@@ -261,7 +315,7 @@ func (token *AccessTokenEntry) Get(request *Request) Result {
 		return Result{Code: 404, Message: "not found"}
 	}
 
-	// Remove key from response
+	// Hide key
 	token.Key = ""
 
 	return Result{}

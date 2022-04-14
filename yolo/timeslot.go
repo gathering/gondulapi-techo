@@ -56,10 +56,11 @@ type TimeslotAssignStationRequest struct{}
 type TimeslotFinishRequest struct{}
 
 func init() {
+	// TODO
 	// rest.AddHandler("/admin/timeslots/", "^$", func() interface{} { return &TimeslotsForAdmins{} })
-	rest.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
+	// rest.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
 	// rest.AddHandler("/admin/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &TimeslotForAdmins{} })
-	rest.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
+	// rest.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
 	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/assign-station/$", func() interface{} { return &TimeslotAssignStationRequest{} })
 	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/finish/$", func() interface{} { return &TimeslotFinishRequest{} })
 }

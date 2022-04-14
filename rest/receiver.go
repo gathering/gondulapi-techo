@@ -167,19 +167,35 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 
+	// Purge expired access tokens (should happen as periodic task, but whatever, requests are pretty periodic and this is pretty quick)
+	PurgeExpiredAccessTokens()
+
 	// Load access token entry (if any valid) and user (if any associated)
 	var token *AccessTokenEntry
 	authHeader, authHeaderFound := request.Header["Authorization"]
-	if authHeaderFound && len(authHeader) == 2 && strings.ToLower(authHeader[0]) == "bearer" {
-		tokenKey := authHeader[1]
-		token = LoadAccessTokenByKey(tokenKey)
-		// Deny request if using invalid/expired token
-		if token == nil {
-			output := output{code: 401, data: map[string]string{"message": "Invalid token specified (expired?)"}}
+	if authHeaderFound {
+		authHeaderFields := strings.Fields(authHeader[0])
+		if len(authHeaderFields) == 2 && strings.ToLower(authHeaderFields[0]) == "bearer" {
+			tokenKey := authHeaderFields[1]
+			token = LoadAccessTokenByKey(tokenKey)
+			if token == nil {
+				output := output{code: 401, data: map[string]string{"message": "Invalid access token specified (expired?)"}}
+				answerRequest(writer, input, output)
+				return
+			}
+		} else {
+			output := output{code: 401, data: map[string]string{"message": "Invalid access token format"}}
 			answerRequest(writer, input, output)
 			return
 		}
+	} else {
+		token = MakeGuestAccessToken()
 	}
+	log.WithFields(log.Fields{
+		"token":   token.ID,
+		"role":    token.GetRole(),
+		"comment": token.Comment,
+	}).Trace("Using access token")
 
 	var foundReceiver *receiver
 	for _, receiver := range set.receivers {
