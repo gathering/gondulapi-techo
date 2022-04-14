@@ -47,6 +47,7 @@ type OAuth2Config struct {
 	ClientSecret string `json:"client_secret"` // Client Secret
 	AuthURL      string `json:"auth_url"`      // Authorize URL
 	TokenURL     string `json:"token_url"`     // Token URL
+	RedirectURL  string `json:"redirect_url"`  // Redirect URL
 }
 
 // UnicornConfig contains the Unicorn IdP config.

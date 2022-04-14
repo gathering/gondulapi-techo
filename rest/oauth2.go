@@ -83,12 +83,6 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	oauth2AccessToken := oauth2Token.AccessToken
 	log.Tracef("Got token: %v", oauth2Token)
 
-	// TODO
-	// TODO fetch profile
-	// TODO get local user, create new if missing
-	// TODO update local user and save it
-	// TODO create token and return it to the user
-
 	// Get profile from Unicorn
 	httpRequest, httpRequestErr := http.NewRequest("GET", config.Config.Unicorn.ProfileURL, nil)
 	if httpRequestErr != nil {
@@ -157,6 +151,7 @@ func makeOAuth2Config() oauth2.Config {
 		Endpoint: oauth2.Endpoint{
 			TokenURL: config.Config.OAuth2.TokenURL,
 		},
+		RedirectURL: config.Config.OAuth2.RedirectURL,
 		// Scopes: []string{"all"},
 	}
 }

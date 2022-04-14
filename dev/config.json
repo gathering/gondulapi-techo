@@ -7,7 +7,8 @@
 		"client_id": "TODO",
 		"client_secret": "TODO",
 		"auth_url": "https://unicorn.gathering.org/oauth/authorize/",
-		"token_url": "https://unicorn.gathering.org/oauth/token/"
+		"token_url": "https://unicorn.gathering.org/oauth/token/",
+		"redirect_url": "https://techo.gathering.org/login"
 	},
 	"unicorn": {
 		"profile_url": "https://unicorn.gathering.org/api/accounts/users/@me/"
