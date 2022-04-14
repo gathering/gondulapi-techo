@@ -11,9 +11,9 @@ ENDPOINT="localhost:8080/api/"
 echo
 echo "Seeding users (no conflict) ..."
 ENDPOINT_USER="${ENDPOINT}user/"
-curl -sSf ${ENDPOINT_USER}396345b4-553a-4254-97dc-778bea02a86a -X PUT --data '{"token": "396345b4-553a-4254-97dc-778bea02a86a", "username": "hon", "email_address": "hon@example.net", "display_name": "Håvard1"}'
-curl -sSf ${ENDPOINT_USER}super-duper-secret-uuid -X PUT --data '{"token": "super-duper-secret-uuid", "username": "hon2", "email_address": "hon@example.com", "display_name": "Håvard2"}'
-curl -sSf ${ENDPOINT_USER}super-duper-secret-uuid -X PUT --data '{"token": "super-duper-secret-uuid", "username": "hon2", "email_address": "hon@example.com", "display_name": "Håvard5"}'
+curl -sSf ${ENDPOINT_USER}396345b4-553a-4254-97dc-778bea02a86a -X PUT --data '{"id": "396345b4-553a-4254-97dc-778bea02a86a", "username": "hon", "email_address": "hon@example.net", "display_name": "Håvard1"}'
+curl -sSf ${ENDPOINT_USER}396345b4-553a-4254-97dc-778bea02a86b -X PUT --data '{"id": "396345b4-553a-4254-97dc-778bea02a86b", "username": "hon2", "email_address": "hon@example.com", "display_name": "Håvard2"}'
+curl -sSf ${ENDPOINT_USER}396345b4-553a-4254-97dc-778bea02a86b -X PUT --data '{"id": "396345b4-553a-4254-97dc-778bea02a86b", "username": "hon2", "email_address": "hon@example.com", "display_name": "Håvard5"}'
 
 # Document families
 echo
@@ -55,8 +55,8 @@ curl -sSf $ENDPOINT_TRACK --data '{"track": "net", "shortname": "task1", "name":
 echo
 echo "Seeding timeslots ..."
 ENDPOINT_TIMESLOT="${ENDPOINT}admin/timeslot/"
-curl -sSf $ENDPOINT_TIMESLOT --data '{"user_token": "396345b4-553a-4254-97dc-778bea02a86a", "track": "server"}'
-curl -sSf $ENDPOINT_TIMESLOT --data '{"id": "86fb0380-647f-471f-9df0-d61ff38f6e98", "user_token": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "begin_time": "2020-03-27T12:12:18.927291Z", "end_time": "3020-03-27T13:12:18.927291Z"}'
+curl -sSf $ENDPOINT_TIMESLOT --data '{"user_id": "396345b4-553a-4254-97dc-778bea02a86a", "track": "server"}'
+curl -sSf $ENDPOINT_TIMESLOT --data '{"id": "86fb0380-647f-471f-9df0-d61ff38f6e98", "user_id": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "begin_time": "2020-03-27T12:12:18.927291Z", "end_time": "3020-03-27T13:12:18.927291Z"}'
 
 # Stations
 echo

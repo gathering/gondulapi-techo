@@ -25,7 +25,6 @@ import (
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 )
@@ -44,8 +43,8 @@ type Task struct {
 type Tasks []*Task
 
 func init() {
-	receiver.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
-	receiver.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
+	rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
+	rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
 }
 
 // Get gets multiple tasks.

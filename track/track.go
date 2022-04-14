@@ -25,7 +25,6 @@ import (
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 )
 
@@ -48,8 +47,8 @@ type Track struct {
 type Tracks []*Track
 
 func init() {
-	receiver.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
-	receiver.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
+	rest.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
+	rest.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
 }
 
 // Get gets multiple tracks.

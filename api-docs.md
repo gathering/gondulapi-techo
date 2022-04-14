@@ -1,5 +1,7 @@
 # API Docs
 
+**TODO** Scrap all the "secret token" stuff.
+
 ## General
 
 - All endpoints support `?pretty` to pretty print the JSON.
@@ -22,8 +24,8 @@
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/user/<token>` | `PUT` | Createor update a user. | Public (write). |
-| `/admin/users/[?username=<>][&token=<>]` | `GET` | Get users. | Admin. |
+| `/user/<id>` | `PUT` | Createor update a user. | Public (write). |
+| `/admin/users/[?username=<>][&id=<>]` | `GET` | Get users. | Admin. |
 
 ### Documents
 
@@ -46,7 +48,7 @@
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-token=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user token. | Public (read without credentials). |
+| `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-id=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user ID. | Public (read without credentials). |
 | `/admin/stations/[?track=<>][&shortname=<>][&status=<>]` | `GET` | Get stations with credentials. | Public (read without credentials) and admin. |
 | `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
 | `/admin/station/[id]` | `GET` | Get a station with credentials. | Admin. |
@@ -58,9 +60,9 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
-| `/timeslot/[id][?user-token=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
-| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
+| `/timeslots/?user-id=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user ID). |
+| `/timeslot/[id][?user-id=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
+| `/admin/timeslots/[?user-id=<>][&track=<>][&station-shortname=<>][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
 | `/admin/timeslot/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Admin. |
 | `/admin/timeslot/<id>/assign-station/` | `POST` | Attempts to find an available station (state ready or provision new) and bind it to the timeslot. May provision new stations (server track). It sets the begin time to now and end time a 1000 years into the future. | Admin. |
 | `/admin/timeslot/<id>/finish/` | `POST` | End the timeslot and make the station dirty/terminated. It sets the end time to now. | Admin. |

@@ -4,19 +4,18 @@
 	"debug": true,
 	"site_prefix": "/api",
 	"server_tracks": {
-		"classic": {
+		"server": {
 			"base_url": "http://TODO",
 			"task_type": "1",
 			"auth_username": "TODO",
 			"auth_password": "TODO",
 			"max_instances": 10
-		},
-		"gondul": {
-			"base_url": "http://TODO",
-			"task_type": "2",
-			"auth_username": "TODO",
-			"auth_password": "TODO",
-			"max_instances": 10
+		}
+	},
+	"access_tokens": {
+		"00000000-0000-0000-0000-000000000000": {
+			"key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			"role": "admin"
 		}
 	}
 }

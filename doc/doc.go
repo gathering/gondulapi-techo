@@ -26,7 +26,6 @@ import (
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 )
 
@@ -54,10 +53,10 @@ type Document struct {
 type Documents []*Document
 
 func init() {
-	receiver.AddHandler("/document-families/", "^$", func() interface{} { return &DocumentFamilies{} })
-	receiver.AddHandler("/document-family/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &DocumentFamily{} })
-	receiver.AddHandler("/documents/", "^$", func() interface{} { return &Documents{} })
-	receiver.AddHandler("/document/", "^(?:(?P<family_id>[^/]+)/(?P<shortname>[^/]+)/)?$", func() interface{} { return &Document{} })
+	rest.AddHandler("/document-families/", "^$", func() interface{} { return &DocumentFamilies{} })
+	rest.AddHandler("/document-family/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &DocumentFamily{} })
+	rest.AddHandler("/documents/", "^$", func() interface{} { return &Documents{} })
+	rest.AddHandler("/document/", "^(?:(?P<family_id>[^/]+)/(?P<shortname>[^/]+)/)?$", func() interface{} { return &Document{} })
 }
 
 // Get gets multiple families.

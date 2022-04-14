@@ -28,6 +28,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/gathering/tech-online-backend/config"
 	_ "github.com/lib/pq" // For postgres support
 )
 
@@ -93,12 +94,13 @@ func Ping() error {
 
 // Connect sets up the database connection, using the configured
 // ConnectionString, and ensures it is working.
-func Connect(connectionString string) error {
+func Connect() error {
 	var err error
 	if DB != nil {
 		return Ping()
 	}
 
+	connectionString := config.Config.DatabaseString
 	if connectionString == "" {
 		return newError("Missing database credentials")
 	}

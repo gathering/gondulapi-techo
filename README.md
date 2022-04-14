@@ -36,6 +36,7 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 - Rename Go module from `github.com/gathering/gondulapi` to `github.com/gathering/tech-online-backend` (using import alias `techo`).
 - Remove temporary, custom endpoints (`/custom/track-stations/` and `/custom/station-tasks-tests/`).
 - Changed config structure.
+- Replace user token ("secret" from SSO) with non-secret UUID.
 
 ## TODO
 
@@ -48,6 +49,8 @@ Mainly so frontend-people and such can see what changed. This is not a changelog
 - From "database_string" to actual parameters.
 - Order results by some attribute for certain endpoints.
 - Add periodic cleanup of expired tokens.
+- Normalize UUIDs from path/query params before comparing in database to avoid missing a match due to case sensitivity for something insensitive.
+- Create permanent access tokens through API.
 
 ### Desirable Changes from 2021
 

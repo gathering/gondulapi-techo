@@ -26,7 +26,6 @@ import (
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 )
@@ -52,8 +51,8 @@ type Test struct {
 type Tests []*Test
 
 func init() {
-	receiver.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
-	receiver.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
+	rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
+	rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
 }
 
 // Get gets multiple tests.

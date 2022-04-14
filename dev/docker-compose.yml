@@ -2,7 +2,7 @@ version: '3.7'
 
 services:
   techo:
-    image: goldulapi-techo:latest
+    image: techo-backend:latest
     build: ..
     #user: 1000:1000
     environment:

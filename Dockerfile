@@ -9,13 +9,11 @@ COPY go.sum ./
 RUN go mod download
 
 # Build app
-COPY auth auth
 COPY cmd cmd
 COPY config config
 COPY db db
 COPY doc doc
 COPY helper helper
-COPY receiver receiver
 COPY rest rest
 COPY track track
 #COPY *.go ./

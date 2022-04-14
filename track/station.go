@@ -30,7 +30,6 @@ import (
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 
@@ -100,12 +99,12 @@ type serverCreateStationResponse struct {
 }
 
 func init() {
-	receiver.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
-	receiver.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
-	receiver.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
-	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
-	receiver.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
-	receiver.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
+	// rest.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
+	rest.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
+	// rest.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
+	rest.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
+	rest.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
+	rest.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
 }
 
 // Get gets multiple stations. For admins.
@@ -141,18 +140,27 @@ func (stations *Stations) Get(request *rest.Request) rest.Result {
 	}
 
 	// Copy and hide credentials
+	// TODO fix this. will crash, doesnn't make sense with new model.
 	_, timeslotIDOk := request.QueryArgs["timeslot"]
-	userToken, userTokenOk := request.QueryArgs["user-token"]
+	userStrID, userStrIDOk := request.QueryArgs["user-id"]
+	var userID *uuid.UUID = nil
+	if userStrIDOk {
+		newUserID, userIDParseErr := uuid.Parse(userStrID)
+		if userIDParseErr != nil {
+			return rest.Result{Code: 400, Message: "invalid user ID"}
+		}
+		*userID = newUserID
+	}
 	for _, stationForAdmins := range stationsForAdmins {
 		station := Station(*stationForAdmins)
 		credentials := station.Credentials
 		station.Credentials = ""
-		// If filtering by timeslot and user token, show credentials only if correct user token
-		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
+		// If filtering by timeslot and user ID, show credentials only if correct user ID
+		if timeslotIDOk && userID != nil && station.TimeslotID != "" {
 			var timeslot Timeslot
 			timeslotDBResult := db.Select(&timeslot, "timeslots",
 				"id", "=", station.TimeslotID,
-				"user_token", "=", userToken,
+				"user_id", "=", userID,
 			)
 			if timeslotDBResult.IsFailed() {
 				return rest.Result{Code: 500, Error: timeslotDBResult.Error}
@@ -200,15 +208,24 @@ func (station *Station) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	// Show credentials only if a user token matching the active timeslot was provided
-	userToken, userTokenOk := request.QueryArgs["user-token"]
+	// Show credentials only if a user ID matching the active timeslot was provided
+	// TODO fix this for new model
+	userStrID, userStrIDOk := request.QueryArgs["user-id"]
+	var userID *uuid.UUID = nil
+	if userStrIDOk {
+		newUserID, userIDParseErr := uuid.Parse(userStrID)
+		if userIDParseErr != nil {
+			return rest.Result{Code: 400, Message: "invalid user ID"}
+		}
+		*userID = newUserID
+	}
 	credentials := station.Credentials
 	station.Credentials = ""
-	if userTokenOk && userToken != "" && station.TimeslotID != "" {
+	if userID != nil && station.TimeslotID != "" {
 		var timeslot Timeslot
 		timeslotDBResult := db.Select(&timeslot, "timeslots",
 			"id", "=", station.TimeslotID,
-			"user_token", "=", userToken,
+			"user_id", "=", userID,
 		)
 		if timeslotDBResult.IsFailed() {
 			return rest.Result{Code: 500, Error: timeslotDBResult.Error}

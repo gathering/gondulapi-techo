@@ -24,10 +24,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gathering/tech-online-backend/auth"
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
-	"github.com/gathering/tech-online-backend/receiver"
 	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 )
@@ -35,7 +33,7 @@ import (
 // Timeslot is a participation object used both for registration (without time and station), planning (with time) and station binding (station with this timeslot).
 type Timeslot struct {
 	ID        *uuid.UUID `column:"id" json:"id"`                 // Generated, required, unique
-	UserToken string     `column:"user_token" json:"user_token"` // Required, secret
+	UserID    *uuid.UUID `column:"user_id" json:"user_id"`       // Required
 	TrackID   string     `column:"track" json:"track"`           // Required
 	BeginTime *time.Time `column:"begin_time" json:"begin_time"` // Empty upon registration, used strictly for manual purposes
 	EndTime   *time.Time `column:"end_time" json:"end_time"`     // Empty upon registration, used strictly for manual purposes
@@ -58,20 +56,20 @@ type TimeslotAssignStationRequest struct{}
 type TimeslotFinishRequest struct{}
 
 func init() {
-	receiver.AddHandler("/admin/timeslots/", "^$", func() interface{} { return &TimeslotsForAdmins{} })
-	receiver.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
-	receiver.AddHandler("/admin/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &TimeslotForAdmins{} })
-	receiver.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
-	receiver.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/assign-station/$", func() interface{} { return &TimeslotAssignStationRequest{} })
-	receiver.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/finish/$", func() interface{} { return &TimeslotFinishRequest{} })
+	// rest.AddHandler("/admin/timeslots/", "^$", func() interface{} { return &TimeslotsForAdmins{} })
+	rest.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
+	// rest.AddHandler("/admin/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &TimeslotForAdmins{} })
+	rest.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
+	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/assign-station/$", func() interface{} { return &TimeslotAssignStationRequest{} })
+	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/finish/$", func() interface{} { return &TimeslotFinishRequest{} })
 }
 
 // Get gets multiple timeslots.
 func (timeslots *TimeslotsForAdmins) Get(request *rest.Request) rest.Result {
 	now := time.Now()
 	var whereArgs []interface{}
-	if userID, ok := request.QueryArgs["user-token"]; ok {
-		whereArgs = append(whereArgs, "user_token", "=", userID)
+	if userID, ok := request.QueryArgs["user-id"]; ok {
+		whereArgs = append(whereArgs, "user_id", "=", userID)
 	}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -117,12 +115,12 @@ func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "track", "=", trackID)
 	}
 
-	// Require user token.
-	userToken, userTokenOk := request.QueryArgs["user-token"]
-	if userTokenOk {
-		whereArgs = append(whereArgs, "user_token", "=", userToken)
+	// Require user ID.
+	userID, userIDOk := request.QueryArgs["user-id"]
+	if userIDOk {
+		whereArgs = append(whereArgs, "user_id", "=", userID)
 	} else {
-		return rest.Result{Code: 400, Message: "missing user token"}
+		return rest.Result{Code: 400, Message: "missing user ID"}
 	}
 
 	dbResult := db.SelectMany(timeslots, "timeslots", whereArgs...)
@@ -220,10 +218,14 @@ func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	// Require user token.
-	userToken, userTokenOk := request.QueryArgs["user-token"]
-	if !userTokenOk {
-		return rest.Result{Code: 400, Message: "missing user token"}
+	// Require user ID.
+	userStrID, userStrIDOk := request.QueryArgs["user-id"]
+	if !userStrIDOk {
+		return rest.Result{Code: 400, Message: "missing user ID"}
+	}
+	userID, userIDParseErr := uuid.Parse(userStrID)
+	if userIDParseErr != nil {
+		return rest.Result{Code: 400, Message: "invalid user ID"}
 	}
 
 	// Proxy.
@@ -233,9 +235,9 @@ func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
 		return result
 	}
 
-	// Validate token.
-	if timeslotForAdmins.UserToken != userToken {
-		return rest.Result{Code: 400, Message: "invalid token"}
+	// Validate ID.
+	if *timeslotForAdmins.UserID != userID {
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	*timeslot = Timeslot(timeslotForAdmins)
@@ -248,91 +250,12 @@ func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
 	timeslot.BeginTime = nil
 	timeslot.EndTime = nil
 
-	// Proxy, no user token validation.
+	// Proxy, no user ID validation.
 	timeslotForAdmins := TimeslotForAdmins(*timeslot)
 	result := timeslotForAdmins.Post(request)
 	*timeslot = Timeslot(timeslotForAdmins)
 	return result
 }
-
-// Put updates a timeslot.
-// func (timeslot *Timeslot) Put(request *rest.Request) rest.Result {
-// 	id, idExists := request.PathArgs["id"]
-// 	if !idExists || id == "" {
-// 		return rest.Result{Code: 400, Message: "missing ID"}
-// 	}
-
-// 	// Require user token.
-// 	userToken, userTokenOk := request.QueryArgs["user-token"]
-// 	if !userTokenOk {
-// 		return rest.Result{Code: 400, Message: "missing user token"}
-// 	}
-// 	if timeslot.UserToken != userToken {
-// 		return rest.Result{Code: 400, Message: "incorrect user token"}
-// 	}
-
-// 	// Validate
-// 	if timeslot.ID != nil && (*timeslot.ID).String() != id {
-// 		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
-// 	}
-// 	timeslotForAdmins := TimeslotForAdmins(*timeslot)
-// 	if result := timeslotForAdmins.validate(); !result.IsOk() {
-// 		return result
-// 	}
-
-// 	// Get existing timeslot to check if exists and to compare token
-// 	var existingTimeslot TimeslotForAdmins
-// 	found, err := db.Select(&existingTimeslot, "timeslots", "id", "=", id)
-// 	if err != nil {
-// 		return rest.Result{Error: err}
-// 	}
-// 	if !found {
-// 		return rest.Result{Code: 404, Message: "not found"}
-// 	}
-
-// 	// Verify user token (before proxy).
-// 	if existingTimeslot.UserToken != userToken {
-// 		return rest.Result{Code: 400, Message: "invalid token"}
-// 	}
-
-// 	return timeslotForAdmins.createOrUpdate()
-// }
-
-// Delete deletes a timeslot.
-// func (timeslot *Timeslot) Delete(request *rest.Request) rest.Result {
-// 	id, idExists := request.PathArgs["id"]
-// 	if !idExists || id == "" {
-// 		return rest.Result{Code: 400, Message: "missing ID"}
-// 	}
-
-// 	// Require user token.
-// 	userToken, userTokenOk := request.QueryArgs["user-token"]
-// 	if !userTokenOk {
-// 		return rest.Result{Code: 400, Message: "missing user token"}
-// 	}
-// 	if timeslot.UserToken != userToken {
-// 		return rest.Result{Code: 400, Message: "incorrect user token"}
-// 	}
-
-// 	// Get existing timeslot to check if exists and to compare token
-// 	var existingTimeslot TimeslotForAdmins
-// 	found, err := db.Select(&existingTimeslot, "timeslots", "id", "=", id)
-// 	if err != nil {
-// 		return rest.Result{Error: err}
-// 	}
-// 	if !found {
-// 		return rest.Result{Code: 404, Message: "not found"}
-// 	}
-
-// 	// Verify user token (before proxy).
-// 	if existingTimeslot.UserToken != userToken {
-// 		return rest.Result{Code: 400, Message: "invalid token"}
-// 	}
-
-// 	result, err := db.Delete("timeslots", "id", "=", timeslot.ID)
-// 	result.Error = err
-// 	return result
-// }
 
 func (timeslot *TimeslotForAdmins) create() rest.Result {
 	if exists, err := timeslot.exists(); err != nil {
@@ -400,8 +323,8 @@ func (timeslot *TimeslotForAdmins) validate() rest.Result {
 	switch {
 	case timeslot.ID == nil:
 		return rest.Result{Code: 400, Message: "missing ID"}
-	case timeslot.UserToken == "":
-		return rest.Result{Code: 400, Message: "missing user token"}
+	case timeslot.UserID == nil:
+		return rest.Result{Code: 400, Message: "missing user ID"}
 	case timeslot.TrackID == "":
 		return rest.Result{Code: 400, Message: "missing track ID"}
 	case (timeslot.BeginTime == nil) != (timeslot.EndTime == nil):
@@ -410,8 +333,8 @@ func (timeslot *TimeslotForAdmins) validate() rest.Result {
 		return rest.Result{Code: 400, Message: "cannot end before it begins"}
 	}
 
-	user := auth.User{Token: timeslot.UserToken}
-	if exists, err := user.ExistsWithToken(); err != nil {
+	user := rest.User{ID: timeslot.UserID}
+	if exists, err := user.ExistsWithID(); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
 		return rest.Result{Code: 400, Message: "referenced user does not exist"}
@@ -436,7 +359,7 @@ func (timeslot *TimeslotForAdmins) validate() rest.Result {
 func (timeslot *TimeslotForAdmins) hasCurrentTimeslot() (bool, error) {
 	now := time.Now()
 	var count int
-	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id != $1 AND track = $2 AND user_token = $3 AND (end_time IS NULL OR end_time >= $4)", timeslot.ID, timeslot.TrackID, timeslot.UserToken, now)
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id != $1 AND track = $2 AND user_id = $3 AND (end_time IS NULL OR end_time >= $4)", timeslot.ID, timeslot.TrackID, timeslot.UserID, now)
 	rowErr := row.Scan(&count)
 	if rowErr != nil {
 		return false, rowErr

@@ -23,7 +23,6 @@ package db_test
 import (
 	"testing"
 
-	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
 	"github.com/gathering/tech-online-backend/helper"
 	log "github.com/sirupsen/logrus"
@@ -48,7 +47,7 @@ func TestSelectMany(t *testing.T) {
 	systems := make([]system, 0)
 	result := db.SelectMany(1, "1", "things", &systems)
 	helper.CheckNotEqual(t, result.Error, nil)
-	err := db.Connect(config.Config.DatabaseString)
+	err := db.Connect()
 	helper.CheckEqual(t, err, nil)
 	result = db.SelectMany(1, "1", "things", &systems)
 	helper.CheckEqual(t, result.Error, nil)
@@ -85,7 +84,7 @@ func TestSelect(t *testing.T) {
 	result := db.Select(1, "1", "things", &item)
 	helper.CheckNotEqual(t, result.Error, nil)
 
-	err := db.Connect(config.Config.DatabaseString)
+	err := db.Connect()
 	helper.CheckEqual(t, err, nil)
 
 	result = db.Select(1, "1", "things", &item)
@@ -111,7 +110,7 @@ func TestSelect(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	item := system{}
-	err := db.Connect(config.Config.DatabaseString)
+	err := db.Connect()
 	helper.CheckEqual(t, err, nil)
 
 	result := db.Select("e1-3", "sysname", "things", &item)
@@ -150,7 +149,7 @@ func TestUpdate(t *testing.T) {
 
 func TestInsert(t *testing.T) {
 	item := system{}
-	err := db.Connect(config.Config.DatabaseString)
+	err := db.Connect()
 	helper.CheckEqual(t, err, nil)
 
 	result := db.Select("kjeks", "sysname", "things", &item)

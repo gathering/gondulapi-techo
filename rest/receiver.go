@@ -36,7 +36,7 @@ See objects/thing.go for how to use this, but the essence is:
 Receiver tries to do all HTTP and caching-related tasks for you, so you
 don't have to.
 */
-package receiver
+package rest
 
 import (
 	"crypto/sha256"
@@ -51,7 +51,6 @@ import (
 	"strings"
 
 	"github.com/gathering/tech-online-backend/config"
-	"github.com/gathering/tech-online-backend/rest"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -120,16 +119,16 @@ func AddHandler(pathPrefix string, pathPattern string, allocator Allocator) erro
 // one of Getter, Putter, Poster or Deleter from gondulapi.
 type Allocator func() interface{}
 
-// Start a net/http server and handle all requests registered. Never
+// StartReceiver a net/http server and handle all requests registered. Never
 // returns.
-func Start() {
+func StartReceiver() {
 	var server http.Server
 	serveMux := http.NewServeMux()
 	server.Handler = serveMux
-	if config.Config.ListenAddress == "" {
-		server.Addr = ":8080"
+	server.Addr = ":8080"
+	if config.Config.ListenAddress != "" {
+		server.Addr = config.Config.ListenAddress
 	}
-	server.Addr = config.Config.ListenAddress
 
 	// Default handler, for consistent 404s
 	defaultReceiverSet := receiverSet{pathPrefix: "/"}
@@ -156,13 +155,28 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		"client": request.RemoteAddr,
 	}).Infof("Request")
 
-	input, err := getInput(set.pathPrefix, request)
+	// Process request content
+	input, err := getInput(request, set.pathPrefix)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"data": string(input.data),
 			"err":  err,
-		}).Warn("Request input failed")
+		}).Warn("Failed to process request input")
 		return
+	}
+
+	// Load access token entry (if any valid) and user (if any associated)
+	var token *AccessTokenEntry
+	authHeader, authHeaderFound := request.Header["Authorization"]
+	if authHeaderFound && len(authHeader) == 2 && strings.ToLower(authHeader[0]) == "bearer" {
+		tokenKey := authHeader[1]
+		token = LoadAccessTokenByKey(tokenKey)
+		// Deny request if using invalid/expired token
+		if token == nil {
+			output := output{code: 401, data: map[string]string{"message": "Invalid token specified (expired?)"}}
+			answerRequest(writer, input, output)
+			return
+		}
 	}
 
 	var foundReceiver *receiver
@@ -177,14 +191,17 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		}
 	}
 
-	output := handleRequest(foundReceiver, input)
+	// Process request
+	output := handleRequest(foundReceiver, input, token)
+
+	// Create response
 	answerRequest(writer, input, output)
 }
 
 // get is a badly named function in the context of HTTP since what it
 // really does is just read the body of a HTTP request. In my defence, it
 // used to do more. But what have it done for me lately?!
-func getInput(pathPrefix string, request *http.Request) (input, error) {
+func getInput(request *http.Request, pathPrefix string) (input, error) {
 	var input input
 	fullPath := request.URL.Path
 	// Make sure path always ends with "/"
@@ -196,7 +213,9 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 	input.pathSuffix = fullPath[len(pathPrefix):]
 	input.query = request.URL.Query()
 	input.method = request.Method
+	input.pretty = len(request.URL.Query()["pretty"]) > 0
 
+	// Process body
 	if request.ContentLength != 0 {
 		input.data = make([]byte, request.ContentLength)
 
@@ -210,16 +229,14 @@ func getInput(pathPrefix string, request *http.Request) (input, error) {
 		}
 	}
 
-	input.pretty = len(request.URL.Query()["pretty"]) > 0
-
 	return input, nil
 }
 
 // handle figures out what Method the input has, casts item to the correct
 // interface and calls the relevant function, if any, for that data. For
 // PUT and POST it also parses the input data.
-func handleRequest(receiver *receiver, input input) (output output) {
-	var result rest.Result
+func handleRequest(receiver *receiver, input input, accessTokenEntry *AccessTokenEntry) (output output) {
+	var result Result
 	var defaultCode int
 	var handlerData interface{}
 
@@ -281,7 +298,8 @@ func handleRequest(receiver *receiver, input input) (output output) {
 	}
 
 	// Prepare request object
-	var request rest.Request
+	var request Request
+	request.AccessTokenEntry = accessTokenEntry
 	request.PathArgs = make(map[string]string)
 	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
 	argCaptureNames := receiver.pathPattern.SubexpNames()
@@ -317,7 +335,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 		defaultCode = 200
 	case "HEAD":
 		defaultCode = 200
-		get, ok := item.(rest.Getter)
+		get, ok := item.(Getter)
 		if !ok {
 			result.Code = 405
 			result.Message = "method not allowed for endpoint"
@@ -327,7 +345,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 		handlerData = nil
 	case "GET":
 		defaultCode = 200
-		get, ok := item.(rest.Getter)
+		get, ok := item.(Getter)
 		if !ok {
 			result.Code = 405
 			result.Message = "method not allowed for endpoint"
@@ -344,7 +362,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 				return
 			}
 		}
-		post, ok := item.(rest.Poster)
+		post, ok := item.(Poster)
 		if !ok {
 			result.Code = 405
 			result.Message = "method not allowed for endpoint"
@@ -360,7 +378,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 				return
 			}
 		}
-		put, ok := item.(rest.Putter)
+		put, ok := item.(Putter)
 		if !ok {
 			result.Code = 405
 			result.Message = "method not allowed for endpoint"
@@ -369,7 +387,7 @@ func handleRequest(receiver *receiver, input input) (output output) {
 		result = put.Put(&request)
 	case "DELETE":
 		defaultCode = 200
-		del, ok := item.(rest.Deleter)
+		del, ok := item.(Deleter)
 		if !ok {
 			result.Code = 405
 			result.Message = "method not allowed for endpoint"
@@ -388,34 +406,26 @@ func handleRequest(receiver *receiver, input input) (output output) {
 // answer replies to a HTTP request with the provided output, optionally
 // formatting the output prettily. It also calculates an ETag.
 func answerRequest(w http.ResponseWriter, input input, output output) {
-	if output.code >= 400 && output.code <= 499 {
-		log.WithFields(log.Fields{
-			"code":     output.code,
-			"location": output.location,
-			"data":     output.data,
-		}).Trace("Request done")
-	} else {
-		log.WithFields(log.Fields{
-			"code":     output.code,
-			"location": output.location,
-		}).Trace("Request done")
-	}
+	log.WithFields(log.Fields{
+		"code":     output.code,
+		"location": output.location,
+	}).Trace("Request done")
 
 	code := output.code
 
 	// Content
-	b := make([]byte, 0)
+	body := make([]byte, 0)
 	if output.data != nil {
 		var jsonErr error
 		if input.pretty {
-			b, jsonErr = json.MarshalIndent(output.data, "", "  ")
+			body, jsonErr = json.MarshalIndent(output.data, "", "  ")
 		} else {
-			b, jsonErr = json.Marshal(output.data)
+			body, jsonErr = json.Marshal(output.data)
 		}
 		if jsonErr != nil {
-			log.Printf("Json marshal error: %v", jsonErr)
-			b = []byte(`{"Message": "JSON marshal error. Very weird."}`)
+			log.WithError(jsonErr).Error("Failed to marshal response data to JSON")
 			code = 500
+			body = make([]byte, 0)
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
@@ -427,7 +437,7 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 	w.Header().Set("Access-Control-Max-Age", "300") // 5 minutes
 
 	// Caching header
-	etagraw := sha256.Sum256(b)
+	etagraw := sha256.Sum256(body)
 	etagstr := hex.EncodeToString(etagraw[:])
 	w.Header().Set("ETag", etagstr)
 
@@ -439,7 +449,7 @@ func answerRequest(w http.ResponseWriter, input input, output output) {
 	// Finalize head and add body
 	w.WriteHeader(code)
 	if code != 204 {
-		fmt.Fprintf(w, "%s\n", b)
+		fmt.Fprintf(w, "%s\n", body)
 	}
 }
 

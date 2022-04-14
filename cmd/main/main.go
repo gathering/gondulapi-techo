@@ -21,11 +21,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package main
 
 import (
-	_ "github.com/gathering/tech-online-backend/auth"
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/gathering/tech-online-backend/db"
 	_ "github.com/gathering/tech-online-backend/doc"
-	"github.com/gathering/tech-online-backend/receiver"
+	"github.com/gathering/tech-online-backend/rest"
 	_ "github.com/gathering/tech-online-backend/track"
 	log "github.com/sirupsen/logrus"
 )
@@ -36,10 +35,18 @@ func main() {
 		return
 	}
 	log.Info("Read config file")
-	if err := db.Connect(config.Config.DatabaseString); err != nil {
+
+	if err := db.Connect(); err != nil {
 		log.WithError(err).Fatal("Failed to connect to database")
 		return
 	}
 	log.Info("Connected to database")
-	receiver.Start()
+
+	if err := rest.UpdateStaticAccessTokens(); err != nil {
+		log.WithError(err).Fatal("Failed to update static access tokens")
+		return
+	}
+	log.Info("Updated static access tokens")
+
+	rest.StartReceiver()
 }

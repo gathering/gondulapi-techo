@@ -24,17 +24,19 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 // Config covers global configuration, and if need be it will provide
 // mechanisms for local overrides (similar to Skogul).
 var Config struct {
-	ListenAddress  string                       `json:"listen_address"`  // Defaults to :8080
-	DatabaseString string                       `json:"database_string"` // For database connections
-	SitePrefix     string                       `json:"site_prefix"`     // URL prefix, e.g. "/api"
-	Debug          bool                         `json:"debug"`           // Enables trace-debugging
-	ServerTracks   map[string]ServerTrackConfig `json:"server_tracks"`   // Static config for server tracks
+	ListenAddress  string                               `json:"listen_address"`  // Defaults to :8080
+	DatabaseString string                               `json:"database_string"` // For database connections
+	SitePrefix     string                               `json:"site_prefix"`     // URL prefix, e.g. "/api"
+	Debug          bool                                 `json:"debug"`           // Enables trace-debugging
+	ServerTracks   map[string]ServerTrackConfig         `json:"server_tracks"`   // Static config for server tracks
+	AccessTokens   map[uuid.UUID]AccessTokenEntryConfig `json:"access_tokens"`   // Static config for server tracks
 }
 
 // ServerTrackConfig contains the static config for a single server track.
@@ -44,6 +46,12 @@ type ServerTrackConfig struct {
 	MaxInstances int    `json:"max_instances"`
 	AuthUsername string `json:"auth_username"`
 	AuthPassword string `json:"auth_password"`
+}
+
+// AccessTokenEntryConfig contains the static config for a single non-user access token.
+type AccessTokenEntryConfig struct {
+	Key  string `json:"key"`
+	Role string `json:"role"`
 }
 
 // ParseConfig reads a file and parses it as JSON, assuming it will be a
