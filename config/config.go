@@ -35,8 +35,23 @@ var Config struct {
 	DatabaseString string                               `json:"database_string"` // For database connections
 	SitePrefix     string                               `json:"site_prefix"`     // URL prefix, e.g. "/api"
 	Debug          bool                                 `json:"debug"`           // Enables trace-debugging
+	OAuth2         OAuth2Config                         `json:"oauth2"`          // OAuth2 section
+	Unicorn        UnicornConfig                        `json:"unicorn"`         // Unicorn IdP section
 	ServerTracks   map[string]ServerTrackConfig         `json:"server_tracks"`   // Static config for server tracks
 	AccessTokens   map[uuid.UUID]AccessTokenEntryConfig `json:"access_tokens"`   // Static config for server tracks
+}
+
+// OAuth2Config contains the OAuth2 config
+type OAuth2Config struct {
+	ClientID     string `json:"client_id"`     // Client ID
+	ClientSecret string `json:"client_secret"` // Client Secret
+	AuthURL      string `json:"auth_url"`      // Authorize URL
+	TokenURL     string `json:"token_url"`     // Token URL
+}
+
+type UnicornConfig struct {
+	ProfileURL          string `json:"profile_url"`            // URL to the Unicorn IDP profile endpoint
+	FrontendIdPLoginURL string `json:"frontend_idp_login_url"` // URL to the Unicorn IDP login endpoint, for use by the frontend
 }
 
 // ServerTrackConfig contains the static config for a single server track.

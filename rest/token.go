@@ -48,10 +48,12 @@ const (
 	RoleTester      Role = "tester"      // Access to push test data, for status scripts. Valid for non-user tokens only.
 )
 
+const DefaultUserRole = RoleParticipant
+
 type AccessTokenEntry struct {
 	ID             uuid.UUID  `column:"id" json:"id"`
 	Key            string     `column:"key" json:"key,omitempty"`
-	OwnerUserID    *uuid.UUID `column:"owner_user" json:"user,omitempty"`             // Optional, not used for e.g. test status scripts.
+	OwnerUserID    *uuid.UUID `column:"owner_user" json:"owner_user,omitempty"`       // Optional, not used for e.g. test status scripts.
 	NonUserRole    *Role      `column:"non_user_role" json:"non_user_role,omitempty"` // Role if not a user token. Call .GetRole() to get the effective role.
 	CreationTime   time.Time  `column:"creation_time" json:"creation_time"`
 	ExpirationTime time.Time  `column:"expiration_time" json:"expiration_time"`

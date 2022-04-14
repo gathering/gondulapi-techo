@@ -1,7 +1,5 @@
 # API Docs
 
-**TODO** Scrap all the "secret token" stuff.
-
 ## General
 
 - All endpoints support `?pretty` to pretty print the JSON.
@@ -13,18 +11,56 @@
 ## Authentication & Authorization
 
 - The authn/authz is handled by Varnish, in front if the backend.
-- Frontend users are authenticated (to themselved) using OAuth2 against IdP XXX.
-- Backend endpoints not prefixed with `/admin/` allow GET/HEAD without authn.
-- POST/PUT/DELETE to any endpoint and any method to endpoints prefixed `/admin/` _generally_ requires basic auth.
-- Frontend users are allowed to GET/POST/PUT/DELETE their own timeslot which is indexed by a _very secret_ token known only to the users' authenticated clients.
+- Frontend users are authenticated using OAuth2 against IdP Unicorn.
+- For logged in users, the frontend should always specify the `Authorization: Bearer <token>` header.
 
 ## Endpoints
+
+### OAuth2
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/oauth2/login/[?code=<>]` | `POST` | Login using provided OAuth2 code. Returns the user and a login token. | Public. |
+| `/oauth2/info/` | `GET` | Get OAuth2 info, like `client_id` and `auth_url`. | Public. |
+
+Note: Add the `Authorization: Bearer <token>` header to all requests for authenticated users. `token` is the `key` returned within the `token` object in `/oauth2/login/`.
+
+Example login response:
+
+```json
+{
+    "user": {
+        "id": "example",
+        "username": "example",
+        "display_name": "example",
+        "email_address": "example",
+        "role": "example"
+    },
+    "token": {
+        "id": "example",
+        "key": "example",
+        "owner_user": "example",
+        "creation_time": "example",
+        "expiration_time": "example",
+        "static": true
+    }
+}
+```
 
 ### Users
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/user/<id>` | `PUT` | Createor update a user. | Public (write). |
+| `/users/[?username=<>]` | `GET` | Get users. | Self or admin. |
+| `/user/<id>` | `GET` | Create or update a user. | Self or admin. |
+
+## Old Endpoints
+
+### Users
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/user/<id>` | `PUT` | Create or update a user. | Public (write). |
 | `/admin/users/[?username=<>][&id=<>]` | `GET` | Get users. | Admin. |
 
 ### Documents

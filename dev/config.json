@@ -3,6 +3,15 @@
 	"database_string": "host=db user=techo password=lolkek dbname=techo sslmode=disable",
 	"debug": true,
 	"site_prefix": "/api",
+	"oauth2": {
+		"client_id": "TODO",
+		"client_secret": "TODO",
+		"auth_url": "https://unicorn.gathering.org/oauth/authorize/",
+		"token_url": "https://unicorn.gathering.org/oauth/token/"
+	},
+	"unicorn": {
+		"profile_url": "https://unicorn.gathering.org/api/accounts/users/@me/"
+	},
 	"server_tracks": {
 		"server": {
 			"base_url": "http://TODO",

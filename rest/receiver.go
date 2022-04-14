@@ -143,8 +143,10 @@ func StartReceiver() {
 		}
 	}
 
-	log.WithField("listen_address", server.Addr).Info()
-	log.WithField("path_prefix", config.Config.SitePrefix).Info()
+	log.WithFields(log.Fields{
+		"listen_address": server.Addr,
+		"path_prefix":    config.Config.SitePrefix,
+	}).Info("Server is listening")
 	log.Fatal(server.ListenAndServe())
 }
 
@@ -235,7 +237,7 @@ func getInput(request *http.Request, pathPrefix string) (input, error) {
 // handle figures out what Method the input has, casts item to the correct
 // interface and calls the relevant function, if any, for that data. For
 // PUT and POST it also parses the input data.
-func handleRequest(receiver *receiver, input input, accessTokenEntry *AccessTokenEntry) (output output) {
+func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntry) (output output) {
 	var result Result
 	var defaultCode int
 	var handlerData interface{}
@@ -299,7 +301,7 @@ func handleRequest(receiver *receiver, input input, accessTokenEntry *AccessToke
 
 	// Prepare request object
 	var request Request
-	request.AccessTokenEntry = accessTokenEntry
+	request.AccessToken = accessToken
 	request.PathArgs = make(map[string]string)
 	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
 	argCaptureNames := receiver.pathPattern.SubexpNames()

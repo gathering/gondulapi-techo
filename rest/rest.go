@@ -23,11 +23,11 @@ package rest
 // Request contains the last part of the URL (without the handler prefix), certain query args,
 // and a limit on how many elements to get.
 type Request struct {
-	AccessTokenEntry *AccessTokenEntry
-	PathArgs         map[string]string
-	QueryArgs        map[string]string
-	ListLimit        int  // How many elements to return in listings (convenience)
-	ListBrief        bool // If only the most relevant fields should be included listings (convenience)
+	AccessToken *AccessTokenEntry
+	PathArgs    map[string]string
+	QueryArgs   map[string]string
+	ListLimit   int  // How many elements to return in listings (convenience)
+	ListBrief   bool // If only the most relevant fields should be included listings (convenience)
 }
 
 // Result is an update report on write-requests. The precise meaning might

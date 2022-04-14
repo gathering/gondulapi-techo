@@ -23,6 +23,8 @@ package rest
 import (
 	"github.com/gathering/tech-online-backend/db"
 	"github.com/google/uuid"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // User reperesent a single user, including registry
@@ -40,18 +42,28 @@ type User struct {
 type Users []*User
 
 // UsersForAdmins is a list of users and only accessible for admins.
-type UsersForAdmins Users
+// type UsersForAdmins Users
 
 func init() {
-	// AddHandler("/admin/users/", "^$", func() interface{} { return &UsersForAdmins{} }) // Admin
+	AddHandler("/users/", "^$", func() interface{} { return &Users{} })
 	AddHandler("/user/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &User{} })
 }
 
 // Get gets multiple users.
-func (users *UsersForAdmins) Get(request *Request) Result {
+func (users *Users) Get(request *Request) Result {
 	var whereArgs []interface{}
 	if username, ok := request.QueryArgs["username"]; ok {
 		whereArgs = append(whereArgs, "username", "=", username)
+	}
+
+	// Limit to only self if not operator/admin
+	role := *request.AccessToken.GetRole()
+	if role != RoleOperator && role != RoleAdmin {
+		if request.AccessToken.User != nil {
+			whereArgs = append(whereArgs, "id", "=", request.AccessToken.User.ID)
+		} else {
+			return Result{}
+		}
 	}
 
 	dbResult := db.SelectMany(users, "users", whereArgs...)
@@ -61,25 +73,74 @@ func (users *UsersForAdmins) Get(request *Request) Result {
 	return Result{}
 }
 
-// Put updates a user.
-func (user *User) Put(request *Request) Result {
-	strID, strIDExists := request.PathArgs["id"]
-	if !strIDExists || strID == "" {
+// Get gets a user.
+func (user *User) Get(request *Request) Result {
+	strId, strIdExists := request.PathArgs["id"]
+	if !strIdExists || strId == "" {
 		return Result{Code: 400, Message: "missing ID"}
 	}
-	id, idParseErr := uuid.Parse(strID)
+	id, idParseErr := uuid.Parse(strId)
 	if idParseErr != nil {
-		return Result{Code: 400, Message: "invalid ID"}
-	}
-	if result := user.validate(); !result.IsOk() {
-		return result
-	}
-	if *user.ID != id {
-		return Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return Result{Code: 400, Message: "invalid user ID"}
 	}
 
-	return user.createOrUpdate()
+	// Check if self or operator/admin
+	role := *request.AccessToken.GetRole()
+	if role != RoleOperator && role != RoleAdmin {
+		if request.AccessToken.User == nil || request.AccessToken.User != nil && *request.AccessToken.User.ID != id {
+			return Result{Code: 403, Message: "Access denied"}
+		}
+	}
+
+	dbResult := db.Select(user, "users", "id", "=", id)
+	if dbResult.IsFailed() {
+		return Result{Code: 500, Error: dbResult.Error}
+	}
+	if !dbResult.IsSuccess() {
+		return Result{Code: 404, Message: "not found"}
+	}
+	return Result{}
 }
+
+// Gets a user by ID if it exists, returns nil if not.
+func getUserByID(id uuid.UUID) *User {
+	var user *User
+	dbResult := db.Select(user, "users", "id", "=", id)
+	if dbResult.IsFailed() {
+		log.WithError(dbResult.Error).Error("Failed to load user which may or may not not exist")
+		return nil
+	}
+	return user
+}
+
+// Saves the user.
+func (user *User) save() error {
+	dbResult := db.Insert("users", user)
+	if dbResult.IsFailed() {
+		return dbResult.Error
+	}
+	return nil
+}
+
+// Put updates a user.
+// func (user *User) Put(request *Request) Result {
+// 	strID, strIDExists := request.PathArgs["id"]
+// 	if !strIDExists || strID == "" {
+// 		return Result{Code: 400, Message: "missing ID"}
+// 	}
+// 	id, idParseErr := uuid.Parse(strID)
+// 	if idParseErr != nil {
+// 		return Result{Code: 400, Message: "invalid ID"}
+// 	}
+// 	if result := user.validate(); !result.IsOk() {
+// 		return result
+// 	}
+// 	if *user.ID != id {
+// 		return Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
+// 	}
+
+// 	return user.createOrUpdate()
+// }
 
 // func (user *User) create() Result {
 // 	if exists, err := user.ExistsWithID(); err != nil {
