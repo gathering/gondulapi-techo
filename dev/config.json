@@ -25,7 +25,8 @@
 	"access_tokens": {
 		"00000000-0000-0000-0000-000000000000": {
 			"key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-			"role": "admin"
+			"role": "admin",
+			"comment": "example admin, remove in prod"
 		}
 	}
 }

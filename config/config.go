@@ -66,8 +66,9 @@ type ServerTrackConfig struct {
 
 // AccessTokenEntryConfig contains the static config for a single non-user access token.
 type AccessTokenEntryConfig struct {
-	Key  string `json:"key"`
-	Role string `json:"role"`
+	Key     string `json:"key"`
+	Role    string `json:"role"`
+	Comment string `json:"comment"`
 }
 
 // ParseConfig reads a file and parses it as JSON, assuming it will be a

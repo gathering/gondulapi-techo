@@ -29,7 +29,8 @@ CREATE TABLE public.access_tokens (
     "non_user_role" text,
     "creation_time" timestamp with time zone NOT NULL,
     "expiration_time" timestamp with time zone NOT NULL,
-    "static" boolean NOT NULL
+    "static" boolean NOT NULL,
+    "comment" text NOT NULL
 );
 
 -- Document families table

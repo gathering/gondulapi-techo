@@ -66,7 +66,8 @@ type AccessTokenEntry struct {
 	CreationTime   time.Time  `column:"creation_time" json:"creation_time"`
 	ExpirationTime time.Time  `column:"expiration_time" json:"expiration_time"`
 	IsStatic       bool       `column:"static" json:"static"` // If the token is static, i.e. defined by the config instead of DB and can't be created or deleted through the API.
-	User           *User      `column:"-" json:"-"`           // The linked user (if any). Do not modify this object. Call .LoadUser() again if the underlying user is modified.
+	Comment        string     `column:"comment" json:"comment"`
+	User           *User      `column:"-" json:"-"` // The linked user (if any). Do not modify this object. Call .LoadUser() again if the underlying user is modified.
 }
 
 // AccessTokenEntries is multiple AccessTokenEntry.
@@ -96,6 +97,7 @@ func UpdateStaticAccessTokens() error {
 			CreationTime:   time.Now(),
 			ExpirationTime: time.Now().AddDate(1000, 0, 0), // + 1000 years
 			IsStatic:       true,
+			Comment:        tokenConfig.Comment,
 		}
 
 		// Validate
