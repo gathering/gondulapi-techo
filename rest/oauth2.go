@@ -28,19 +28,23 @@ import (
 	"net/url"
 
 	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 )
 
-// Oauth2LoginResponse is the object for OAuth2 login requests.
-type Oauth2LoginResponse struct {
+// Oauth2LoginData is the object for OAuth2 login requests.
+type Oauth2LoginData struct {
 	User  User             `json:"user"`
 	Token AccessTokenEntry `json:"token"`
 }
 
-// Oauth2InfoResponse is the object for OAuth2 info requests.
-type Oauth2InfoResponse struct {
+// Oauth2LogoutData is the object for OAuth2 login requests.
+type Oauth2LogoutData struct{}
+
+// Oauth2InfoData is the object for OAuth2 info requests.
+type Oauth2InfoData struct {
 	ClientID    string `json:"client_id"`
 	AuthURL     string `json:"auth_url"`
 	RedirectURL string `json:"redirect_url"`
@@ -54,12 +58,13 @@ type unicornProfile struct {
 }
 
 func init() {
-	AddHandler("/oauth2/info/", "^$", func() interface{} { return &Oauth2InfoResponse{} })
-	AddHandler("/oauth2/login/", "^$", func() interface{} { return &Oauth2LoginResponse{} })
+	AddHandler("/oauth2/info/", "^$", func() interface{} { return &Oauth2InfoData{} })
+	AddHandler("/oauth2/login/", "^$", func() interface{} { return &Oauth2LoginData{} })
+	AddHandler("/oauth2/logout/", "^$", func() interface{} { return &Oauth2LogoutData{} })
 }
 
 // Get gets OAuth2 info.
-func (response *Oauth2InfoResponse) Get(request *Request) Result {
+func (response *Oauth2InfoData) Get(request *Request) Result {
 	response.ClientID = config.Config.OAuth2.ClientID
 	response.AuthURL = config.Config.OAuth2.AuthURL
 	response.RedirectURL = config.Config.OAuth2.RedirectURL
@@ -67,7 +72,7 @@ func (response *Oauth2InfoResponse) Get(request *Request) Result {
 }
 
 // Post attempts to login using OAuth2.
-func (response *Oauth2LoginResponse) Post(request *Request) Result {
+func (response *Oauth2LoginData) Post(request *Request) Result {
 	oauth2Config := makeOAuth2Config()
 
 	// Check for provided code
@@ -142,7 +147,7 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	}
 
 	// Create access token
-	token, tokenErr := CreateUserAccessToken(user)
+	token, tokenErr := createUserAccessToken(user)
 	if tokenErr != nil {
 		log.WithError(tokenErr).Warn("OAuth2: Failed to create new access token for user")
 		return Result{Code: 500}
@@ -150,6 +155,21 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 
 	response.Token = *token
 	response.User = *user
+	return Result{}
+}
+
+// Post deletes the current access token.
+// Supports user tokens only.
+func (response *Oauth2LogoutData) Post(request *Request) Result {
+	if request.AccessToken.OwnerUserID == nil {
+		dbResult := db.Delete("access_tokens", "id", "<=", request.AccessToken.ID)
+		if dbResult.IsFailed() {
+			log.WithError(dbResult.Error).Error("Failed to delete user access token on logout")
+		}
+		request.AccessToken = makeGuestAccessToken()
+	} else {
+		return Result{Code: 400, Message: "This access token type doesn't support logouts"}
+	}
 	return Result{}
 }
 

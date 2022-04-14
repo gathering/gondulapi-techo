@@ -65,7 +65,7 @@ type AccessTokenEntry struct {
 	ExpirationTime time.Time  `column:"expiration_time" json:"expiration_time"`
 	IsStatic       bool       `column:"static" json:"static"` // If the token is static, i.e. defined by the config instead of DB and can't be created or deleted through the API.
 	Comment        string     `column:"comment" json:"comment"`
-	User           *User      `column:"-" json:"-"` // The linked user (if any). Do not modify this object. Call .LoadUser() again if the underlying user is modified.
+	OwnerUser      *User      `column:"-" json:"-"` // The linked user (if any). Do not modify this object. Call .LoadUser() again if the underlying user is modified.
 }
 
 // AccessTokenEntries is multiple AccessTokenEntry.
@@ -114,8 +114,8 @@ func UpdateStaticAccessTokens() error {
 	return nil
 }
 
-// CreateUserAccessToken creates and saves an access token with a generated ID and key, starting now.
-func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
+// createUserAccessToken creates and saves an access token with a generated ID and key, starting now.
+func createUserAccessToken(user *User) (*AccessTokenEntry, error) {
 	newKey, newKeyErr := generateAccessTokenKey()
 	if newKeyErr != nil {
 		return nil, newKeyErr
@@ -130,7 +130,7 @@ func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
 		ExpirationTime: time.Now().Add(tokenExpirationSeconds * time.Second),
 		IsStatic:       false,
 		Comment:        fmt.Sprintf("OAuth2: %v", user.Username),
-		User:           user,
+		OwnerUser:      user,
 	}
 
 	if valRes := token.validateInternal(); valRes != "" {
@@ -145,10 +145,10 @@ func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
 	return &token, nil
 }
 
-// LoadAccessTokenByKey returns a valid token for the provided key or nil if none exists.
+// loadAccessTokenByKey returns a valid token for the provided key or nil if none exists.
 // If a token key header was specified but no valid token could be found for it,
 // the request should probably be denied.
-func LoadAccessTokenByKey(key string) *AccessTokenEntry {
+func loadAccessTokenByKey(key string) *AccessTokenEntry {
 	if key == "" {
 		return nil
 	}
@@ -172,7 +172,7 @@ func LoadAccessTokenByKey(key string) *AccessTokenEntry {
 	// Load user (if any)
 	if token.OwnerUserID != nil {
 		user, userErr := loadUser(*token.OwnerUserID)
-		token.User = user
+		token.OwnerUser = user
 		if userErr != nil {
 			log.WithFields(log.Fields{
 				"token_id": token.ID,
@@ -185,8 +185,8 @@ func LoadAccessTokenByKey(key string) *AccessTokenEntry {
 	return &token
 }
 
-// MakeGuestAccessToken creates an empty-ish guest access token, such that all requests (authenticated or not) have a role.
-func MakeGuestAccessToken() *AccessTokenEntry {
+// makeGuestAccessToken creates an empty-ish guest access token, such that all requests (authenticated or not) have a role.
+func makeGuestAccessToken() *AccessTokenEntry {
 	id, _ := uuid.FromBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	role := RoleGuest
 	time := time.Now()
@@ -202,8 +202,8 @@ func MakeGuestAccessToken() *AccessTokenEntry {
 	}
 }
 
-// PurgeExpiredAccessTokens deletes all expired tokens. Should be called periodically.
-func PurgeExpiredAccessTokens() {
+// purgeExpiredAccessTokens deletes all expired tokens. Should be called periodically.
+func purgeExpiredAccessTokens() {
 	now := time.Now()
 	dbResult := db.Delete("access_tokens", "expiration_time", "<=", now)
 	if dbResult.IsFailed() {
@@ -240,8 +240,8 @@ func (token *AccessTokenEntry) validateInternal() string {
 // Assumes the user is already loaded if user token.
 // Returns an empty string (the invalid role) if inconsistent token.
 func (token *AccessTokenEntry) GetRole() Role {
-	if token.User != nil {
-		return token.User.Role
+	if token.OwnerUser != nil {
+		return token.OwnerUser.Role
 	}
 	if token.NonUserRole != nil {
 		return *token.NonUserRole
@@ -268,8 +268,8 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	// Limit to only self if not operator/admin
 	role := request.AccessToken.GetRole()
 	if role != RoleAdmin {
-		if request.AccessToken.User != nil {
-			whereArgs = append(whereArgs, "user", "=", request.AccessToken.User.ID)
+		if request.AccessToken.OwnerUser != nil {
+			whereArgs = append(whereArgs, "user", "=", request.AccessToken.OwnerUser.ID)
 		} else {
 			// No access, just leave
 			return Result{}
@@ -299,10 +299,10 @@ func (token *AccessTokenEntry) Get(request *Request) Result {
 	// Check if self or operator/admin
 	role := request.AccessToken.GetRole()
 	if role != RoleAdmin {
-		if request.AccessToken.User != nil && request.AccessToken.User.ID.String() != id {
+		if request.AccessToken.OwnerUser != nil && request.AccessToken.OwnerUser.ID.String() != id {
 			return Result{Code: 403, Message: "Access denied"}
 		}
-		if request.AccessToken.User == nil {
+		if request.AccessToken.OwnerUser == nil {
 			return Result{Code: 403, Message: "Access denied"}
 		}
 	}

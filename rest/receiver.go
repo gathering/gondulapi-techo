@@ -168,7 +168,7 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	}
 
 	// Purge expired access tokens (should happen as periodic task, but whatever, requests are pretty periodic and this is pretty quick)
-	PurgeExpiredAccessTokens()
+	purgeExpiredAccessTokens()
 
 	// Load access token entry (if any valid) and user (if any associated)
 	var token *AccessTokenEntry
@@ -177,7 +177,7 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		authHeaderFields := strings.Fields(authHeader[0])
 		if len(authHeaderFields) == 2 && strings.ToLower(authHeaderFields[0]) == "bearer" {
 			tokenKey := authHeaderFields[1]
-			token = LoadAccessTokenByKey(tokenKey)
+			token = loadAccessTokenByKey(tokenKey)
 			if token == nil {
 				output := output{code: 401, data: map[string]string{"message": "Invalid access token specified (expired?)"}}
 				answerRequest(writer, input, output)
@@ -189,7 +189,7 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 			return
 		}
 	} else {
-		token = MakeGuestAccessToken()
+		token = makeGuestAccessToken()
 	}
 	log.WithFields(log.Fields{
 		"token":   token.ID,
