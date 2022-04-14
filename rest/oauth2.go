@@ -81,7 +81,7 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 		if rawNewRedurectURL != nil {
 			return Result{Code: 400, Message: "Invalid redirect URL provided"}
 		}
-		if newRedurectURL.Host != "localhost" {
+		if newRedurectURL.Hostname() != "localhost" {
 			return Result{Code: 400, Message: "Illegal redirect URL provided"}
 		}
 		oauth2Config.RedirectURL = newRedurectURL.String()
