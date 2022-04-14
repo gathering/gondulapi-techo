@@ -75,11 +75,11 @@ func (users *Users) Get(request *Request) Result {
 
 // Get gets a user.
 func (user *User) Get(request *Request) Result {
-	strId, strIdExists := request.PathArgs["id"]
-	if !strIdExists || strId == "" {
+	strID, strIDExists := request.PathArgs["id"]
+	if !strIDExists || strID == "" {
 		return Result{Code: 400, Message: "missing ID"}
 	}
-	id, idParseErr := uuid.Parse(strId)
+	id, idParseErr := uuid.Parse(strID)
 	if idParseErr != nil {
 		return Result{Code: 400, Message: "invalid user ID"}
 	}
@@ -204,6 +204,7 @@ func (user *User) validate() Result {
 	return Result{}
 }
 
+// ExistsWithID checks whether a user with the specified ID exists or not.
 func (user *User) ExistsWithID() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE id = $1", user.ID)
@@ -214,6 +215,7 @@ func (user *User) ExistsWithID() (bool, error) {
 	return count > 0, nil
 }
 
+// ExistsWithUsername checks whether a user with the specified username exists or not.
 func (user *User) ExistsWithUsername() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE id != $1 AND username = $2", user.ID, user.Username)

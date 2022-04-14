@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 /*
-Package receiver is scaffolding around net/http that facilitates a
+Package rest is scaffolding around net/http that facilitates a
 RESTful HTTP API with certain patterns implicitly enforced:
 - When working on the same urls, all Methods should use the exact same
 data structures. E.g.: What you PUT is the same as what you GET out

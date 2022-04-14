@@ -25,7 +25,7 @@ import (
 	"github.com/gathering/tech-online-backend/db"
 	_ "github.com/gathering/tech-online-backend/doc"
 	"github.com/gathering/tech-online-backend/rest"
-	_ "github.com/gathering/tech-online-backend/track"
+	_ "github.com/gathering/tech-online-backend/yolo"
 	log "github.com/sirupsen/logrus"
 )
 

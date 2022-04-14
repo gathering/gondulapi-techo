@@ -15,7 +15,7 @@ COPY db db
 COPY doc doc
 COPY helper helper
 COPY rest rest
-COPY track track
+COPY yolo yolo
 #COPY *.go ./
 RUN go build -v -o techo-backend cmd/main/main.go
 

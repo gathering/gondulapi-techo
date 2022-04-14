@@ -32,11 +32,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// Oauth2LoginResponse is the object for OAuth2 login requests.
 type Oauth2LoginResponse struct {
 	User  User             `json:"user"`
 	Token AccessTokenEntry `json:"token"`
 }
 
+// Oauth2InfoResponse is the object for OAuth2 info requests.
 type Oauth2InfoResponse struct {
 	ClientID string `json:"client_id"`
 	AuthURL  string `json:"auth_url"`
@@ -54,12 +56,14 @@ func init() {
 	AddHandler("/oauth2/login/", "^$", func() interface{} { return &Oauth2LoginResponse{} })
 }
 
+// Get gets OAuth2 info.
 func (response *Oauth2InfoResponse) Get(request *Request) Result {
 	response.ClientID = config.Config.OAuth2.ClientID
 	response.AuthURL = config.Config.OAuth2.AuthURL
 	return Result{}
 }
 
+// Post attempts to login using OAuth2.
 func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	oauth2Config := makeOAuth2Config()
 
@@ -125,6 +129,9 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	user.Username = profile.Username
 	user.DisplayName = profile.DisplayName
 	user.EmailAddress = profile.EmailAddress
+	if user.Role == "" {
+		user.Role = DefaultUserRole
+	}
 	if err := user.save(); err != nil {
 		log.WithError(err).Warn("OAuth2: Failed to save new or updated user")
 		return Result{Code: 500}

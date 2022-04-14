@@ -49,9 +49,9 @@ type OAuth2Config struct {
 	TokenURL     string `json:"token_url"`     // Token URL
 }
 
+// UnicornConfig contains the Unicorn IdP config.
 type UnicornConfig struct {
-	ProfileURL          string `json:"profile_url"`            // URL to the Unicorn IDP profile endpoint
-	FrontendIdPLoginURL string `json:"frontend_idp_login_url"` // URL to the Unicorn IDP login endpoint, for use by the frontend
+	ProfileURL string `json:"profile_url"` // URL to the Unicorn IDP profile endpoint
 }
 
 // ServerTrackConfig contains the static config for a single server track.

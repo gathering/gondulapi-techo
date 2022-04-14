@@ -38,18 +38,26 @@ const encodedTokenLengthBytes = 44 // Depends on tokenLengthBytes
 // TODO increase to some reasonable amount of time
 const tokenExpirationSeconds = 300
 
+// Role defines a role for users and tokens.
 type Role string
 
 const (
-	RoleInvalid     Role = ""            // Invalid.
-	RoleParticipant Role = "participant" // Access to participate (i.e. logged in). Valid for user tokens only.
-	RoleOperator    Role = "operator"    // Access to most stuff, but can't create new tracks, push status, etc.
-	RoleAdmin       Role = "admin"       // Access to everything.
-	RoleTester      Role = "tester"      // Access to push test data, for status scripts. Valid for non-user tokens only.
+	// RoleInvalid - Invalid.
+	RoleInvalid Role = ""
+	// RoleParticipant - Access to participate (i.e. logged in). Valid for user tokens only.
+	RoleParticipant Role = "participant"
+	// RoleOperator - Access to most stuff, but can't create new tracks, push status, etc.
+	RoleOperator Role = "operator"
+	// RoleAdmin - Access to everything.
+	RoleAdmin Role = "admin"
+	// RoleTester - Access to push test data, for status scripts. Valid for non-user tokens only.
+	RoleTester Role = "tester"
 )
 
+// DefaultUserRole specified the default role for a user.
 const DefaultUserRole = RoleParticipant
 
+// AccessTokenEntry is a collections of access things used for the client to authenticate itself and for the backend to know more about the client.
 type AccessTokenEntry struct {
 	ID             uuid.UUID  `column:"id" json:"id"`
 	Key            string     `column:"key" json:"key,omitempty"`
@@ -61,6 +69,7 @@ type AccessTokenEntry struct {
 	User           *User      `column:"-" json:"-"`           // The linked user (if any). Do not modify this object. Call .LoadUser() again if the underlying user is modified.
 }
 
+// AccessTokenEntries is multiple AccessTokenEntry.
 type AccessTokenEntries []*AccessTokenEntry
 
 func init() {
@@ -68,7 +77,7 @@ func init() {
 	AddHandler("/access_token/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &AccessTokenEntry{} })
 }
 
-// Delete previous static tokens and load new ones from the config.
+// UpdateStaticAccessTokens deletes the previous static tokens and load new ones from the config.
 // To be called at least when starting the program.
 func UpdateStaticAccessTokens() error {
 	// Delete all old static tokens
@@ -105,7 +114,7 @@ func UpdateStaticAccessTokens() error {
 	return nil
 }
 
-// Creates and saves an access token with a generated ID and key, starting now.
+// CreateUserAccessToken creates and saves an access token with a generated ID and key, starting now.
 func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
 	newKey, newKeyErr := generateAccessTokenKey()
 	if newKeyErr != nil {
@@ -135,7 +144,7 @@ func CreateUserAccessToken(user *User) (*AccessTokenEntry, error) {
 	return &token, nil
 }
 
-// Returns a valid token for the provided key or nil if none exists.
+// LoadAccessTokenByKey returns a valid token for the provided key or nil if none exists.
 // If a token key header was specified but no valid token could be found for it,
 // the request should probably be denied.
 func LoadAccessTokenByKey(key string) *AccessTokenEntry {
@@ -200,17 +209,17 @@ func (token *AccessTokenEntry) validateInternal() string {
 	return ""
 }
 
-// Returns the non-user role if non-user token or the user role if user token.
+// GetRole returns the non-user role if non-user token or the user role if user token.
 // Assumes the user is already loaded if user token.
 // Returns an empty string (the invalid role) if inconsistent token.
 func (token *AccessTokenEntry) GetRole() *Role {
 	if token.User != nil {
 		return &token.User.Role
-	} else {
-		return token.NonUserRole
 	}
+	return token.NonUserRole
 }
 
+// Get gets multiple access tokens.
 func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	// TODO access control
 	// TODO return only tokens the user has access to
@@ -235,6 +244,7 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	return Result{}
 }
 
+// Get gets a single access token.
 func (token *AccessTokenEntry) Get(request *Request) Result {
 	// TODO access control
 	// TODO return only tokens the user has access to
