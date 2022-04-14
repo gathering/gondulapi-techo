@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 
 	"github.com/gathering/tech-online-backend/config"
 	"github.com/google/uuid"
@@ -68,9 +69,22 @@ func (response *Oauth2LoginResponse) Post(request *Request) Result {
 	oauth2Config := makeOAuth2Config()
 
 	// Check for provided code
-	oauth2Code, oauth2CodeOk := request.QueryArgs["code"]
-	if !oauth2CodeOk {
+	oauth2Code, oauth2CodeFound := request.QueryArgs["code"]
+	if !oauth2CodeFound {
 		return Result{Code: 400, Message: "No code provided"}
+	}
+
+	// Check for alternative redirect URL (only allows variations with host=localhost for testing purposes)
+	rawNewRedurectURL, redurectURLFound := request.QueryArgs["redirect_url"]
+	if redurectURLFound && rawNewRedurectURL != oauth2Config.RedirectURL {
+		newRedurectURL, rawNewRedurectURL := url.Parse(rawNewRedurectURL)
+		if rawNewRedurectURL != nil {
+			return Result{Code: 400, Message: "Invalid redirect URL provided"}
+		}
+		if newRedurectURL.Host != "localhost" {
+			return Result{Code: 400, Message: "Illegal redirect URL provided"}
+		}
+		oauth2Config.RedirectURL = newRedurectURL.String()
 	}
 
 	// Exchange code for token
