@@ -11,19 +11,59 @@
 ## Authentication & Authorization
 
 - The authn/authz is handled by Varnish, in front if the backend.
-- Frontend users are authenticated (to themselved) using OAuth2 against IdP XXX.
-- Backend endpoints not prefixed with `/admin/` allow GET/HEAD without authn.
-- POST/PUT/DELETE to any endpoint and any method to endpoints prefixed `/admin/` _generally_ requires basic auth.
-- Frontend users are allowed to GET/POST/PUT/DELETE their own timeslot which is indexed by a _very secret_ token known only to the users' authenticated clients.
+- Frontend users are authenticated using OAuth2 against IdP Unicorn.
+- For logged in users, the frontend should always specify the `Authorization: Bearer <token>` header.
 
 ## Endpoints
+
+Note: All endpoints may be prefixed by e.g. `/api` by configuring it in the config file.
+
+### OAuth2
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/oauth2/login/[?code=<>]` | `POST` | Login using provided OAuth2 code. Returns the user and a login token. | Public. |
+| `/oauth2/info/` | `GET` | Get OAuth2 info, like `client_id` and `auth_url`. | Public. |
+
+Note: Add the `Authorization: Bearer <token>` header to all requests for authenticated users. `token` is the `key` returned within the `token` object in `/oauth2/login/`.
+
+Example login response:
+
+```json
+{
+    "user": {
+        "id": "example",
+        "username": "example",
+        "display_name": "example",
+        "email_address": "example",
+        "role": "example"
+    },
+    "token": {
+        "id": "example",
+        "key": "example",
+        "owner_user": "example",
+        "creation_time": "example",
+        "expiration_time": "example",
+        "static": true
+    }
+}
+```
 
 ### Users
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/user/<token>` | `PUT` | Createor update a user. | Public (write). |
-| `/admin/users/[?username=<>][&token=<>]` | `GET` | Get users. | Admin. |
+| `/users/[?username=<>]` | `GET` | Get users. | Self or admin. |
+| `/user/<id>` | `GET` | Create or update a user. | Self or admin. |
+
+## Old Endpoints
+
+### Users
+
+| Endpoint | Methods | Description | Auth |
+| - | - | - | - |
+| `/user/<id>` | `PUT` | Create or update a user. | Public (write). |
+| `/admin/users/[?username=<>][&id=<>]` | `GET` | Get users. | Admin. |
 
 ### Documents
 
@@ -46,7 +86,7 @@
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-token=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user token. | Public (read without credentials). |
+| `/stations/[?track=<>][&shortname=<>][&status=<>][&timeslot=<>][&user-id=<>]` | `GET` | Get stations. The credentials will be hidden unless filtering by timeslot ID and providing the correct user ID. | Public (read without credentials). |
 | `/admin/stations/[?track=<>][&shortname=<>][&status=<>]` | `GET` | Get stations with credentials. | Public (read without credentials) and admin. |
 | `/station/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a station. To allocate or destroy the backing station (server track using VMs), use the special endpoints for that instead. | Assigned participant (read), public (read without credentials) and admin. |
 | `/admin/station/[id]` | `GET` | Get a station with credentials. | Admin. |
@@ -58,9 +98,9 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/timeslots/?user-token=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user token). |
-| `/timeslot/[id][?user-token=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
-| `/admin/timeslots/[?user-token=<>][&track=<>][&station-shortname=<>][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
+| `/timeslots/?user-id=<>[&track=<>]` | `GET` | Get timeslots for a user. | Public (secret user ID). |
+| `/timeslot/[id][?user-id=<>]` | `GET`, `POST` | Get/post a timeslot for a user. With limited access because public. | Public (secret user token). |
+| `/admin/timeslots/[?user-id=<>][&track=<>][&station-shortname=<>][&not-ended][&assigned-station][&not-assigned-station]` | `GET` | Get timeslots. | Admin. |
 | `/admin/timeslot/[id]` | `GET`, `POST`, `PUT`, `DELETE` | Get/post/put/delete a timeslot for a user. | Admin. |
 | `/admin/timeslot/<id>/assign-station/` | `POST` | Attempts to find an available station (state ready or provision new) and bind it to the timeslot. May provision new stations (server track). It sets the begin time to now and end time a 1000 years into the future. | Admin. |
 | `/admin/timeslot/<id>/finish/` | `POST` | End the timeslot and make the station dirty/terminated. It sets the end time to now. | Admin. |
@@ -94,15 +134,15 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 **Show timeslots without times (new registration)**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?no-time&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?no-time&pretty"`
 
 **Show timeslots with stations (currently in use)**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?assigned-station&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?assigned-station&pretty"`
 
 **Show timeslots with times and waiting for stations**:
 
-`curl -u "<HIDDEN>" "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
+`curl "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
 
 ## Examples
 

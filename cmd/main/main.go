@@ -1,6 +1,7 @@
 /*
-Gondul GO API
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -20,18 +21,32 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 package main
 
 import (
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
-	_ "github.com/gathering/gondulapi/techo"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	_ "github.com/gathering/tech-online-backend/doc"
+	"github.com/gathering/tech-online-backend/rest"
+	_ "github.com/gathering/tech-online-backend/track"
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
-	if err := gondulapi.ParseConfig("config.json"); err != nil {
-		panic(err)
+	if err := config.ParseConfig("config.json"); err != nil {
+		log.WithError(err).Fatal("Failed to read config file")
+		return
 	}
+	log.Info("Read config file")
+
 	if err := db.Connect(); err != nil {
-		panic(err)
+		log.WithError(err).Fatal("Failed to connect to database")
+		return
 	}
-	receiver.Start()
+	log.Info("Connected to database")
+
+	if err := rest.UpdateStaticAccessTokens(); err != nil {
+		log.WithError(err).Fatal("Failed to update static access tokens")
+		return
+	}
+	log.Info("Updated static access tokens")
+
+	rest.StartReceiver()
 }

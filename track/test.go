@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,15 +18,15 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package track
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 )
 
@@ -51,12 +51,12 @@ type Test struct {
 type Tests []*Test
 
 func init() {
-	receiver.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
-	receiver.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
+	rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
+	rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
 }
 
 // Get gets multiple tests.
-func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
+func (tests *Tests) Get(request *rest.Request) rest.Result {
 	// TODO order by sequence
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
@@ -78,33 +78,29 @@ func (tests *Tests) Get(request *gondulapi.Request) gondulapi.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
-	selectErr := db.SelectMany(tests, "tests", whereArgs...)
-	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+	dbResult := db.SelectMany(tests, "tests", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post posts multiple tests which may overwrite old ones.
-func (tests *Tests) Post(request *gondulapi.Request) gondulapi.Result {
+func (tests *Tests) Post(request *rest.Request) rest.Result {
 	// Feed individual tests to the individual post endpoint, stop on first error
-	totalResult := gondulapi.Result{}
+	totalResult := rest.Result{}
 	for _, test := range *tests {
 		result := test.Post(request)
-		if result.HasErrorOrCode() {
+		if !result.IsOk() {
 			return result
 		}
-		totalResult.Affected += result.Affected
-		totalResult.Ok += result.Ok
-		totalResult.Failed += result.Failed
 	}
 
 	return totalResult
 }
 
 // Delete delete multiple tests.
-func (tests *Tests) Delete(request *gondulapi.Request) gondulapi.Result {
+func (tests *Tests) Delete(request *rest.Request) rest.Result {
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -125,47 +121,42 @@ func (tests *Tests) Delete(request *gondulapi.Request) gondulapi.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
-	selectErr := db.SelectMany(tests, "tests", whereArgs...)
-	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+	dbResult := db.SelectMany(tests, "tests", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
 
 	// Delete one by one, exit on first error
-	summedResult := gondulapi.Result{}
 	for _, test := range *tests {
-		result, err := db.Delete("tests", "id", "=", test.ID)
-		if err != nil {
-			summedResult.Error = err
-			return summedResult
+		dbResult := db.Delete("tests", "id", "=", test.ID)
+		if dbResult.IsFailed() {
+			return rest.Result{Code: 500, Error: dbResult.Error}
 		}
-		summedResult.Affected += result.Affected
-		summedResult.Ok += result.Ok
-		summedResult.Failed += result.Failed
 	}
 
-	return summedResult
+	return rest.Result{}
 }
 
 // Get gets a single test.
-func (test *Test) Get(request *gondulapi.Request) gondulapi.Result {
+func (test *Test) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(test, "tests", "id", "=", id)
-	if err != nil {
-		return gondulapi.Result{Error: err}
+	dbResult := db.Select(test, "tests", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+	if !dbResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post creates a new test. Existing tests with the same track/task/test/station/timeslot will get overwritten.
-func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
+func (test *Test) Post(request *rest.Request) rest.Result {
 	// Overwrite certain fields
 	newID := uuid.New()
 	test.ID = &newID
@@ -173,21 +164,21 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	now := time.Now()
 	test.Timestamp = &now
 
-	if result := test.validate(); result.HasErrorOrCode() {
+	if result := test.validate(); !result.IsOk() {
 		return result
 	}
 
 	// Bind to the active timeslot, if any
 	var station Station
-	stationFound, stationErr := db.Select(&station, "stations",
+	stationDBResult := db.Select(&station, "stations",
 		"track", "=", test.TrackID,
 		"shortname", "=", test.StationShortname,
 	)
-	if stationErr != nil {
-		return gondulapi.Result{Error: stationErr}
+	if stationDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: stationDBResult.Error}
 	}
-	if !stationFound {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+	if !stationDBResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 	// Accept timeslot ID as-is as the station is already using it
 	test.TimeslotID = station.TimeslotID
@@ -196,10 +187,10 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot = '')",
 		test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.TimeslotID)
 	if deleteErr != nil {
-		return gondulapi.Result{Error: deleteErr}
+		return rest.Result{Code: 500, Error: deleteErr}
 	}
 
-	var totalResult gondulapi.Result
+	var totalResult rest.Result
 
 	// Save clone without timeslot (to fetch latest and between timeslots)
 	if test.TimeslotID != "" {
@@ -208,63 +199,61 @@ func (test *Test) Post(request *gondulapi.Request) gondulapi.Result {
 		newCloneID := uuid.New()
 		cloneTest.ID = &newCloneID
 		result := cloneTest.create()
-		if result.HasErrorOrCode() {
+		if !result.IsOk() {
 			return result
 		}
-		totalResult.Affected += result.Affected
-		totalResult.Ok += result.Ok
-		totalResult.Failed += result.Failed
 	}
 
 	// Save original (with timeslot of one was found)
 	result := test.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
-	totalResult.Affected += result.Affected
-	totalResult.Ok += result.Ok
-	totalResult.Failed += result.Failed
 
 	totalResult.Code = 201
-	totalResult.Location = fmt.Sprintf("%v/test/%v", gondulapi.Config.SitePrefix, test.ID)
+	totalResult.Location = fmt.Sprintf("%v/test/%v", config.Config.SitePrefix, test.ID)
 	return totalResult
 }
 
 // Delete deletes a task.
-func (test *Test) Delete(request *gondulapi.Request) gondulapi.Result {
+func (test *Test) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
 	if uuidError != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	test.ID = &id
 	exists, err := test.exists()
 	if err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("tests", "id", "=", test.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("tests", "id", "=", test.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (test *Test) create() gondulapi.Result {
+func (test *Test) create() rest.Result {
 	if exists, err := test.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("tests", test)
-	result.Error = err
-	return result
+	dbResult := db.Insert("tests", test)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (test *Test) exists() (bool, error) {
@@ -277,56 +266,56 @@ func (test *Test) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (test *Test) validate() gondulapi.Result {
+func (test *Test) validate() rest.Result {
 	switch {
 	case test.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	case test.TrackID == "":
-		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+		return rest.Result{Code: 400, Message: "missing track ID"}
 	case test.TaskShortname == "":
-		return gondulapi.Result{Code: 400, Message: "missing task shortname"}
+		return rest.Result{Code: 400, Message: "missing task shortname"}
 	case test.Shortname == "":
-		return gondulapi.Result{Code: 400, Message: "missing shortname"}
+		return rest.Result{Code: 400, Message: "missing shortname"}
 	case test.StationShortname == "":
-		return gondulapi.Result{Code: 400, Message: "missing station shortname"}
+		return rest.Result{Code: 400, Message: "missing station shortname"}
 	case test.Name == "":
-		return gondulapi.Result{Code: 400, Message: "missing name"}
+		return rest.Result{Code: 400, Message: "missing name"}
 	case test.StatusSuccess == nil:
-		return gondulapi.Result{Code: 400, Message: "missing success status"}
+		return rest.Result{Code: 400, Message: "missing success status"}
 	case test.Timestamp == nil:
-		return gondulapi.Result{Code: 400, Message: "missing timestamp"}
+		return rest.Result{Code: 400, Message: "missing timestamp"}
 	}
 
 	track := Track{ID: test.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced track does not exist"}
+		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 	task := Task{TrackID: test.TrackID, Shortname: test.TaskShortname}
 	if exists, err := task.existsShortname(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced task does not exist"}
+		return rest.Result{Code: 400, Message: "referenced task does not exist"}
 	}
 	station := Station{TrackID: test.TrackID, Shortname: test.StationShortname}
 	if exists, err := station.existsShortname(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced station does not exist"}
+		return rest.Result{Code: 400, Message: "referenced station does not exist"}
 	}
 	if test.TimeslotID != "" {
 		timeslotID, timeslotIDErr := uuid.Parse(test.TimeslotID)
 		if timeslotIDErr != nil {
-			return gondulapi.Result{Code: 400, Message: "invalid timeslot ID"}
+			return rest.Result{Code: 400, Message: "invalid timeslot ID"}
 		}
 		timeslot := TimeslotForAdmins{ID: &timeslotID}
 		if exists, err := timeslot.exists(); err != nil {
-			return gondulapi.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if !exists {
-			return gondulapi.Result{Code: 400, Message: "referenced timeslot does not exist"}
+			return rest.Result{Code: 400, Message: "referenced timeslot does not exist"}
 		}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }

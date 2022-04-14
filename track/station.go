@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,7 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package track
 
 import (
 	"bytes"
@@ -28,9 +28,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 
 	log "github.com/sirupsen/logrus"
@@ -79,6 +79,12 @@ type StationProvisionRequest struct {
 type StationTerminateRequest struct {
 }
 
+type serverCreateStationRequest struct {
+	Username string `json:"username"`
+	UID      string `json:"uid"`
+	TaskType string `json:"task_type"`
+}
+
 type serverCreateStationResponse struct {
 	ID              int    `json:"id"`
 	FQDN            string `json:"fqdn"`
@@ -93,16 +99,16 @@ type serverCreateStationResponse struct {
 }
 
 func init() {
-	receiver.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
-	receiver.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
-	receiver.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
-	receiver.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
-	receiver.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
-	receiver.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
+	// rest.AddHandler("/admin/stations/", "^$", func() interface{} { return &StationsForAdmins{} })
+	rest.AddHandler("/stations/", "^$", func() interface{} { return &Stations{} })
+	// rest.AddHandler("/admin/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &StationForAdmins{} })
+	rest.AddHandler("/station/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Station{} })
+	rest.AddHandler("/track/", "^(?P<track_id>[^/]+)/provision-station/$", func() interface{} { return &StationProvisionRequest{} })
+	rest.AddHandler("/station/", "^(?P<id>[^/]+)/terminate/$", func() interface{} { return &StationTerminateRequest{} })
 }
 
 // Get gets multiple stations. For admins.
-func (stations *StationsForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+func (stations *StationsForAdmins) Get(request *rest.Request) rest.Result {
 	var whereArgs []interface{}
 	if shortname, ok := request.QueryArgs["shortname"]; ok {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
@@ -117,41 +123,49 @@ func (stations *StationsForAdmins) Get(request *gondulapi.Request) gondulapi.Res
 		whereArgs = append(whereArgs, "timeslot", "=", timeslotID)
 	}
 
-	selectErr := db.SelectMany(stations, "stations", whereArgs...)
-	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+	dbResult := db.SelectMany(stations, "stations", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets multiple stations.
-func (stations *Stations) Get(request *gondulapi.Request) gondulapi.Result {
+func (stations *Stations) Get(request *rest.Request) rest.Result {
 	// Fetch through admin endpoint (with credentials)
 	stationsForAdmins := StationsForAdmins{}
 	stationsForAdminsResult := stationsForAdmins.Get(request)
-	if stationsForAdminsResult.HasErrorOrCode() {
+	if !stationsForAdminsResult.IsOk() {
 		return stationsForAdminsResult
 	}
 
 	// Copy and hide credentials
+	// TODO fix this. will crash, doesnn't make sense with new model.
 	_, timeslotIDOk := request.QueryArgs["timeslot"]
-	userToken, userTokenOk := request.QueryArgs["user-token"]
+	userStrID, userStrIDOk := request.QueryArgs["user-id"]
+	var userID *uuid.UUID = nil
+	if userStrIDOk {
+		newUserID, userIDParseErr := uuid.Parse(userStrID)
+		if userIDParseErr != nil {
+			return rest.Result{Code: 400, Message: "invalid user ID"}
+		}
+		*userID = newUserID
+	}
 	for _, stationForAdmins := range stationsForAdmins {
 		station := Station(*stationForAdmins)
 		credentials := station.Credentials
 		station.Credentials = ""
-		// If filtering by timeslot and user token, show credentials if correct user token
-		if timeslotIDOk && userTokenOk && userToken != "" && station.TimeslotID != "" {
+		// If filtering by timeslot and user ID, show credentials only if correct user ID
+		if timeslotIDOk && userID != nil && station.TimeslotID != "" {
 			var timeslot Timeslot
-			timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+			timeslotDBResult := db.Select(&timeslot, "timeslots",
 				"id", "=", station.TimeslotID,
-				"user_token", "=", userToken,
+				"user_id", "=", userID,
 			)
-			if timeslotErr != nil {
-				return gondulapi.Result{Error: timeslotErr}
+			if timeslotDBResult.IsFailed() {
+				return rest.Result{Code: 500, Error: timeslotDBResult.Error}
 			}
-			if timeslotFound {
+			if timeslotDBResult.IsSuccess() {
 				station.Credentials = credentials
 			}
 		}
@@ -159,98 +173,106 @@ func (stations *Stations) Get(request *gondulapi.Request) gondulapi.Result {
 		*stations = append(*stations, &station)
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets a single station. For admins.
-func (station *StationForAdmins) Get(request *gondulapi.Request) gondulapi.Result {
+func (station *StationForAdmins) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(station, "stations", "id", "=", id)
-	if err != nil {
-		return gondulapi.Result{Error: err}
+	dbResult := db.Select(station, "stations", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+	if !dbResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
-
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets a single station.
-func (station *Station) Get(request *gondulapi.Request) gondulapi.Result {
+func (station *Station) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(station, "stations", "id", "=", id)
-	if err != nil {
-		return gondulapi.Result{Error: err}
+	dbResult := db.Select(station, "stations", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+	if !dbResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	// Show credentials only if a user token matching the active timeslot was provided
-	userToken, userTokenOk := request.QueryArgs["user-token"]
+	// Show credentials only if a user ID matching the active timeslot was provided
+	// TODO fix this for new model
+	userStrID, userStrIDOk := request.QueryArgs["user-id"]
+	var userID *uuid.UUID = nil
+	if userStrIDOk {
+		newUserID, userIDParseErr := uuid.Parse(userStrID)
+		if userIDParseErr != nil {
+			return rest.Result{Code: 400, Message: "invalid user ID"}
+		}
+		*userID = newUserID
+	}
 	credentials := station.Credentials
 	station.Credentials = ""
-	if userTokenOk && userToken != "" && station.TimeslotID != "" {
+	if userID != nil && station.TimeslotID != "" {
 		var timeslot Timeslot
-		timeslotFound, timeslotErr := db.Select(&timeslot, "timeslots",
+		timeslotDBResult := db.Select(&timeslot, "timeslots",
 			"id", "=", station.TimeslotID,
-			"user_token", "=", userToken,
+			"user_id", "=", userID,
 		)
-		if timeslotErr != nil {
-			return gondulapi.Result{Error: timeslotErr}
+		if timeslotDBResult.IsFailed() {
+			return rest.Result{Code: 500, Error: timeslotDBResult.Error}
 		}
-		if timeslotFound {
+		if timeslotDBResult.IsSuccess() {
 			station.Credentials = credentials
 		}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post creates a new station.
-func (station *Station) Post(request *gondulapi.Request) gondulapi.Result {
+func (station *Station) Post(request *rest.Request) rest.Result {
 	if station.ID == nil {
 		newID := uuid.New()
 		station.ID = &newID
 	}
-	if result := station.validate(); result.HasErrorOrCode() {
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := station.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/station/%v/", gondulapi.Config.SitePrefix, station.ID)
+	result.Location = fmt.Sprintf("%v/station/%v/", config.Config.SitePrefix, station.ID)
 	return result
 }
 
 // Put updates a station.
-func (station *Station) Put(request *gondulapi.Request) gondulapi.Result {
+func (station *Station) Put(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	if *station.ID != id {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-	if result := station.validate(); result.HasErrorOrCode() {
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -258,57 +280,62 @@ func (station *Station) Put(request *gondulapi.Request) gondulapi.Result {
 }
 
 // Delete deletes a station.
-func (station *Station) Delete(request *gondulapi.Request) gondulapi.Result {
+func (station *Station) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidErr := uuid.Parse(rawID)
 	if uuidErr != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	station.ID = &id
 	exists, err := station.exists()
 	if err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("stations", "id", "=", station.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("stations", "id", "=", station.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (station *Station) create() gondulapi.Result {
+func (station *Station) create() rest.Result {
 	if exists, err := station.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("stations", station)
-	result.Error = err
-	return result
+	dbResult := db.Insert("stations", station)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (station *Station) createOrUpdate() gondulapi.Result {
+func (station *Station) createOrUpdate() rest.Result {
 	exists, existsErr := station.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("stations", station, "id", "=", station.ID)
-		result.Error = err
-		return result
+		dbResult = db.Update("stations", station, "id", "=", station.ID)
+	} else {
+		dbResult = db.Insert("stations", station)
 	}
-
-	result, err := db.Insert("stations", station)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (station *Station) exists() (bool, error) {
@@ -331,51 +358,51 @@ func (station *Station) existsShortname() (bool, error) {
 	return count > 0, nil
 }
 
-func (station *Station) validate() gondulapi.Result {
+func (station *Station) validate() rest.Result {
 	switch {
 	case station.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	case station.TrackID == "":
-		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+		return rest.Result{Code: 400, Message: "missing track ID"}
 	case !station.validateStatus():
-		return gondulapi.Result{Code: 400, Message: "missing or invalid status"}
+		return rest.Result{Code: 400, Message: "missing or invalid status"}
 	}
 
 	if exists, err := station.existsTrackShortname(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return gondulapi.Result{Code: 409, Message: "combination of track and shortname already exists"}
+		return rest.Result{Code: 409, Message: "combination of track and shortname already exists"}
 	}
 
 	track := Track{ID: station.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced track does not exist"}
+		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 
 	if station.TimeslotID != "" {
 		timeslotID, timeslotIDErr := uuid.Parse(station.TimeslotID)
 		if timeslotIDErr != nil {
-			return gondulapi.Result{Code: 400, Message: "invalid timeslot ID"}
+			return rest.Result{Code: 400, Message: "invalid timeslot ID"}
 		}
 		timeslot := TimeslotForAdmins{ID: &timeslotID}
 		if exists, err := timeslot.existsWithTrack(station.TrackID); err != nil {
-			return gondulapi.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if !exists {
-			return gondulapi.Result{Code: 400, Message: "referenced timeslot does not exist or has wrong track type"}
+			return rest.Result{Code: 400, Message: "referenced timeslot does not exist or has wrong track type"}
 		}
 	}
 
 	if station.TimeslotID != "" {
 		if exists, err := station.existsTimeslot(); err != nil {
-			return gondulapi.Result{Error: err}
+			return rest.Result{Code: 500, Error: err}
 		} else if exists {
-			return gondulapi.Result{Code: 400, Message: "another station is already bound to the referenced timeslot"}
+			return rest.Result{Code: 400, Message: "another station is already bound to the referenced timeslot"}
 		}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 func (station *Station) validateStatus() bool {
@@ -414,10 +441,10 @@ func (station *Station) existsTimeslot() (bool, error) {
 }
 
 // Post attempts to manually create a new station, if the track supports it.
-func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) gondulapi.Result {
+func (createRequest *StationProvisionRequest) Post(request *rest.Request) rest.Result {
 	trackID, trackIDExists := request.PathArgs["track_id"]
 	if !trackIDExists || trackID == "" {
-		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+		return rest.Result{Code: 400, Message: "missing track ID"}
 	}
 
 	var station Station
@@ -428,24 +455,24 @@ func (createRequest *StationProvisionRequest) Post(request *gondulapi.Request) g
 // The receiver station will get overwritten with the created station,
 // plus the result will contain the location of the newly created station.
 // The status will be "maintenance".
-func (station *Station) Provision(trackID string) gondulapi.Result {
+func (station *Station) Provision(trackID string) rest.Result {
 	// Load track
 	var track Track
-	found, selectErr := db.Select(&track, "tracks", "id", "=", trackID)
-	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+	dbResult := db.Select(&track, "tracks", "id", "=", trackID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "track not found"}
+	if !dbResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "track not found"}
 	}
 
 	// Check if track type supports it and if the config is present
 	if track.Type != trackTypeServer {
-		return gondulapi.Result{Code: 400, Message: "track type does not support dynamic stations"}
+		return rest.Result{Code: 400, Message: "track type does not support dynamic stations"}
 	}
-	trackConfig, trackConfigOk := gondulapi.Config.ServerTracks[trackID]
+	trackConfig, trackConfigOk := config.Config.ServerTracks[trackID]
 	if !trackConfigOk || trackConfig.BaseURL == "" {
-		return gondulapi.Result{Code: 400, Message: "track is not configured for dynamic stations"}
+		return rest.Result{Code: 400, Message: "track is not configured for dynamic stations"}
 	}
 
 	// Check limit, excluding terminated ones
@@ -455,83 +482,91 @@ func (station *Station) Provision(trackID string) gondulapi.Result {
 		var count int
 		currentRowErr := currentRow.Scan(&count)
 		if currentRowErr != nil {
-			return gondulapi.Result{Error: currentRowErr}
+			return rest.Result{Code: 500, Error: currentRowErr}
 		}
 		if count+1 > maxStations {
-			return gondulapi.Result{Code: 400, Message: "too many current stations for dynamic track"}
+			return rest.Result{Code: 400, Message: "too many current stations for dynamic track"}
 		}
 	}
 
 	// Call station service
 	serviceURL := trackConfig.BaseURL + "/api/entry/new"
-	serviceBody := []byte(`{"username":"tech","uid":"gondulapi","task_type":"1"}`)
-	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(serviceBody))
+	serviceRequestData := serverCreateStationRequest{
+		Username: "tech",
+		UID:      "techo",
+		TaskType: trackConfig.TaskType,
+	}
+	requestJSON, requestJSONError := json.Marshal(serviceRequestData)
+	if requestJSONError != nil {
+		return rest.Result{Code: 500, Error: requestJSONError}
+	}
+	serviceRequest, serviceRequestErr := http.NewRequest("POST", serviceURL, bytes.NewBuffer(requestJSON))
 	if serviceRequestErr != nil {
-		return gondulapi.Result{Error: serviceRequestErr}
+		return rest.Result{Code: 500, Error: serviceRequestErr}
 	}
 	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
 	serviceRequest.Header.Set("Content-Type", "application/json")
 	serviceClient := &http.Client{}
 	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
 	if serviceResponseErr != nil {
-		return gondulapi.Result{Error: serviceResponseErr}
+		return rest.Result{Code: 500, Error: serviceResponseErr}
 	}
 	defer serviceResponse.Body.Close()
 	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
-		return gondulapi.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+		return rest.Result{Code: 500, Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
 	}
 	serviceResponseBody, serviceResponseBodyErr := ioutil.ReadAll(serviceResponse.Body)
 	if serviceResponseBodyErr != nil {
-		return gondulapi.Result{Error: serviceResponseBodyErr}
+		return rest.Result{Code: 500, Error: serviceResponseBodyErr}
 	}
-	var serviceData serverCreateStationResponse
-	if err := json.Unmarshal(serviceResponseBody, &serviceData); err != nil {
-		return gondulapi.Result{Error: err}
+	var responseData serverCreateStationResponse
+	if err := json.Unmarshal(serviceResponseBody, &responseData); err != nil {
+		return rest.Result{Code: 500, Error: err}
 	}
-	log.Tracef("VM service created new instance: %v", serviceData.ID)
+	log.Tracef("VM service created new instance: %v", responseData.ID)
 
 	// Create station
 	newID := uuid.New()
 	station.ID = &newID
 	station.TrackID = trackID
-	station.Shortname = strconv.Itoa(serviceData.ID)
-	station.Name = fmt.Sprintf("Station #%v", serviceData.ID)
+	station.Shortname = strconv.Itoa(responseData.ID)
+	station.Name = fmt.Sprintf("Station #%v", responseData.ID)
 	station.Status = StationStatusMaintenance
 	// Markdown
 	station.Credentials = fmt.Sprintf("**Username**: %v\n\n**Password**: %v\n\n**Public address (IPv4)**: %v\n\n**Public address (IPv6)**: %v\n\n**SSH port**: %v",
-		serviceData.Username, serviceData.Password, serviceData.IPv4Address, serviceData.IPv6Address, serviceData.SSHPort)
+		responseData.Username, responseData.Password, responseData.IPv4Address, responseData.IPv6Address, responseData.SSHPort)
 	// Markdown
 	station.Notes = fmt.Sprintf("**FQDN**: %v\n\n**Zone**: %v\n\n**VLAN ID**: %v\n\n**VLAN Address (IPv4)**: %v\n\nNote that the station may take a few minutes to start before you can connect.",
-		serviceData.FQDN, serviceData.Zone, serviceData.VLANID, serviceData.VLANIPv4Address)
-	if result := station.validate(); result.HasErrorOrCode() {
+		responseData.FQDN, responseData.Zone, responseData.VLANID, responseData.VLANIPv4Address)
+	if result := station.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := station.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
 	result.Code = 201
-	result.Location = fmt.Sprintf("%s/station/%s/", gondulapi.Config.SitePrefix, station.ID)
+	result.Location = fmt.Sprintf("%s/station/%s/", config.Config.SitePrefix, station.ID)
 	return result
 }
 
 // Post attempts to manually destroy a station, if the track supports it.
-func (destroyRequest *StationTerminateRequest) Post(request *gondulapi.Request) gondulapi.Result {
+func (destroyRequest *StationTerminateRequest) Post(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	// Get station
 	var station Station
-	stationFound, stationSelectErr := db.Select(&station, "stations", "id", "=", id)
-	if stationSelectErr != nil {
-		return gondulapi.Result{Error: stationSelectErr}
+	stationDBResult := db.Select(&station, "stations", "id", "=", id)
+	if stationDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: stationDBResult.Error}
 	}
-	if !stationFound {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+	if !stationDBResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
 	return station.Terminate()
@@ -539,46 +574,46 @@ func (destroyRequest *StationTerminateRequest) Post(request *gondulapi.Request) 
 
 // Terminate attempts to destroy a station, if the track supports it.
 // The receiver station should already be loaded and exist in the database.
-func (station *Station) Terminate() gondulapi.Result {
+func (station *Station) Terminate() rest.Result {
 	// Check if already terminated
 	if station.Status == StationStatusTerminated {
-		return gondulapi.Result{Code: 400, Message: "station already terminated"}
+		return rest.Result{Code: 400, Message: "station already terminated"}
 	}
 
 	// Get track
 	var track Track
-	trackFound, trackSelectErr := db.Select(&track, "tracks", "id", "=", station.TrackID)
-	if trackSelectErr != nil {
-		return gondulapi.Result{Error: trackSelectErr}
+	trackDBResult := db.Select(&track, "tracks", "id", "=", station.TrackID)
+	if trackDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: trackDBResult.Error}
 	}
-	if !trackFound {
-		return gondulapi.Result{Code: 404, Message: "track not found"}
+	if !trackDBResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "track not found"}
 	}
 
 	// Check if track type supports it and if the config is present
 	if track.Type != trackTypeServer {
-		return gondulapi.Result{Code: 400, Message: "track type does not support dynamic stations"}
+		return rest.Result{Code: 400, Message: "track type does not support dynamic stations"}
 	}
-	trackConfig, trackConfigOk := gondulapi.Config.ServerTracks[track.ID]
+	trackConfig, trackConfigOk := config.Config.ServerTracks[track.ID]
 	if !trackConfigOk || trackConfig.BaseURL == "" {
-		return gondulapi.Result{Code: 400, Message: "track type is not configured for dynamic stations"}
+		return rest.Result{Code: 400, Message: "track type is not configured for dynamic stations"}
 	}
 
 	// Call station service
 	serviceURL := fmt.Sprintf("%v/api/entry/%v", trackConfig.BaseURL, station.Shortname)
 	serviceRequest, serviceRequestErr := http.NewRequest("DELETE", serviceURL, nil)
 	if serviceRequestErr != nil {
-		return gondulapi.Result{Error: serviceRequestErr}
+		return rest.Result{Code: 500, Error: serviceRequestErr}
 	}
 	serviceRequest.SetBasicAuth(trackConfig.AuthUsername, trackConfig.AuthPassword)
 	serviceClient := &http.Client{}
 	serviceResponse, serviceResponseErr := serviceClient.Do(serviceRequest)
 	if serviceResponseErr != nil {
-		return gondulapi.Result{Error: serviceResponseErr}
+		return rest.Result{Code: 500, Error: serviceResponseErr}
 	}
 	defer serviceResponse.Body.Close()
 	if serviceResponse.StatusCode < 200 || serviceResponse.StatusCode > 299 {
-		return gondulapi.Result{Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
+		return rest.Result{Code: 500, Error: fmt.Errorf("response contained non-2XX status: %v", serviceResponse.Status)}
 	}
 	log.Tracef("VM service destroyed instance: %v", station.ID)
 
@@ -586,7 +621,9 @@ func (station *Station) Terminate() gondulapi.Result {
 	station.Status = StationStatusTerminated
 	station.TimeslotID = ""
 
-	result, err := db.Update("stations", station, "id", "=", station.ID)
-	result.Error = err
-	return result
+	dbResult := db.Update("stations", station, "id", "=", station.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }

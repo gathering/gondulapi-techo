@@ -1,7 +1,7 @@
 /*
-Tech:Online backend
+Tech:Online Backend
 Copyright 2020, Kristian Lyngstøl <kly@kly.no>
-Copyright 2021, Håvard Ose Nordstrand <hon@hon.one>
+Copyright 2021-2022, Håvard Ose Nordstrand <hon@hon.one>
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,14 +18,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-package techo
+package track
 
 import (
 	"fmt"
 
-	"github.com/gathering/gondulapi"
-	"github.com/gathering/gondulapi/db"
-	"github.com/gathering/gondulapi/receiver"
+	"github.com/gathering/tech-online-backend/config"
+	"github.com/gathering/tech-online-backend/db"
+	"github.com/gathering/tech-online-backend/rest"
 	"github.com/google/uuid"
 )
 
@@ -43,12 +43,12 @@ type Task struct {
 type Tasks []*Task
 
 func init() {
-	receiver.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
-	receiver.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
+	rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
+	rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
 }
 
 // Get gets multiple tasks.
-func (tasks *Tasks) Get(request *gondulapi.Request) gondulapi.Result {
+func (tasks *Tasks) Get(request *rest.Request) rest.Result {
 	// TODO order by sequence
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
@@ -58,64 +58,62 @@ func (tasks *Tasks) Get(request *gondulapi.Request) gondulapi.Result {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
 	}
 
-	selectErr := db.SelectMany(tasks, "tasks", whereArgs...)
-	if selectErr != nil {
-		return gondulapi.Result{Error: selectErr}
+	dbResult := db.SelectMany(tasks, "tasks", whereArgs...)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Get gets a single task.
-func (task *Task) Get(request *gondulapi.Request) gondulapi.Result {
+func (task *Task) Get(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
-	found, err := db.Select(task, "tasks", "id", "=", id)
-	if err != nil {
-		return gondulapi.Result{Error: err}
+	dbResult := db.Select(task, "tasks", "id", "=", id)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-	if !found {
-		return gondulapi.Result{Code: 404, Message: "not found"}
+	if !dbResult.IsSuccess() {
+		return rest.Result{Code: 404, Message: "not found"}
 	}
-
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 // Post creates a new task.
-func (task *Task) Post(request *gondulapi.Request) gondulapi.Result {
+func (task *Task) Post(request *rest.Request) rest.Result {
 	if task.ID == nil {
 		newID := uuid.New()
 		task.ID = &newID
 	}
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(); !result.IsOk() {
 		return result
 	}
 
 	result := task.create()
-	if result.HasErrorOrCode() {
+	if !result.IsOk() {
 		return result
 	}
 
 	result.Code = 201
-	result.Location = fmt.Sprintf("%v/task/%v/", gondulapi.Config.SitePrefix, task.ID)
+	result.Location = fmt.Sprintf("%v/task/%v/", config.Config.SitePrefix, task.ID)
 	return result
 }
 
 // Put updates a task.
-func (task *Task) Put(request *gondulapi.Request) gondulapi.Result {
+func (task *Task) Put(request *rest.Request) rest.Result {
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	if task.ID != nil && (*task.ID).String() != id {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "mismatch between URL and JSON IDs"}
+		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
-	if result := task.validate(); result.HasErrorOrCode() {
+	if result := task.validate(); !result.IsOk() {
 		return result
 	}
 
@@ -123,57 +121,62 @@ func (task *Task) Put(request *gondulapi.Request) gondulapi.Result {
 }
 
 // Delete deletes a task.
-func (task *Task) Delete(request *gondulapi.Request) gondulapi.Result {
+func (task *Task) Delete(request *rest.Request) rest.Result {
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 	id, uuidError := uuid.Parse(rawID)
 	if uuidError != nil {
-		return gondulapi.Result{Failed: 1, Code: 400, Message: "invalid ID"}
+		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
 	task.ID = &id
 	exists, err := task.exists()
 	if err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	}
 	if !exists {
-		return gondulapi.Result{Failed: 1, Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "not found"}
 	}
 
-	result, err := db.Delete("tasks", "id", "=", task.ID)
-	result.Error = err
-	return result
+	dbResult := db.Delete("tasks", "id", "=", task.ID)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (task *Task) create() gondulapi.Result {
+func (task *Task) create() rest.Result {
 	if exists, err := task.exists(); err != nil {
-		return gondulapi.Result{Failed: 1, Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return gondulapi.Result{Failed: 1, Code: 409, Message: "duplicate"}
+		return rest.Result{Code: 409, Message: "duplicate"}
 	}
 
-	result, err := db.Insert("tasks", task)
-	result.Error = err
-	return result
+	dbResult := db.Insert("tasks", task)
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
-func (task *Task) createOrUpdate() gondulapi.Result {
+func (task *Task) createOrUpdate() rest.Result {
 	exists, existsErr := task.exists()
 	if existsErr != nil {
-		return gondulapi.Result{Failed: 1, Error: existsErr}
+		return rest.Result{Code: 500, Error: existsErr}
 	}
 
+	var dbResult db.Result
 	if exists {
-		result, err := db.Update("tasks", task, "id", "=", task.ID)
-		result.Error = err
-		return result
+		dbResult = db.Update("tasks", task, "id", "=", task.ID)
+	} else {
+		dbResult = db.Insert("tasks", task)
 	}
-
-	result, err := db.Insert("tasks", task)
-	result.Error = err
-	return result
+	if dbResult.IsFailed() {
+		return rest.Result{Code: 500, Error: dbResult.Error}
+	}
+	return rest.Result{}
 }
 
 func (task *Task) exists() (bool, error) {
@@ -196,32 +199,32 @@ func (task *Task) existsShortname() (bool, error) {
 	return count > 0, nil
 }
 
-func (task *Task) validate() gondulapi.Result {
+func (task *Task) validate() rest.Result {
 	switch {
 	case task.ID == nil:
-		return gondulapi.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "missing ID"}
 	case task.TrackID == "":
-		return gondulapi.Result{Code: 400, Message: "missing track ID"}
+		return rest.Result{Code: 400, Message: "missing track ID"}
 	case task.Shortname == "":
-		return gondulapi.Result{Code: 400, Message: "missing shortname"}
+		return rest.Result{Code: 400, Message: "missing shortname"}
 	case task.Name == "":
-		return gondulapi.Result{Code: 400, Message: "missing name"}
+		return rest.Result{Code: 400, Message: "missing name"}
 	}
 
 	if exists, err := task.existsTrackShortname(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if exists {
-		return gondulapi.Result{Code: 409, Message: "combination of track and shortname already exists"}
+		return rest.Result{Code: 409, Message: "combination of track and shortname already exists"}
 	}
 
 	track := Track{ID: task.TrackID}
 	if exists, err := track.exists(); err != nil {
-		return gondulapi.Result{Error: err}
+		return rest.Result{Code: 500, Error: err}
 	} else if !exists {
-		return gondulapi.Result{Code: 400, Message: "referenced track does not exist"}
+		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 
-	return gondulapi.Result{}
+	return rest.Result{}
 }
 
 func (task *Task) existsTrackShortname() (bool, error) {
