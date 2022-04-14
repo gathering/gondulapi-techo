@@ -16,6 +16,8 @@
 
 ## Endpoints
 
+Note: All endpoints may be prefixed by e.g. `/api` by configuring it in the config file.
+
 ### OAuth2
 
 | Endpoint | Methods | Description | Auth |
