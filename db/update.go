@@ -136,7 +136,7 @@ func Update(table string, d interface{}, searcher ...interface{}) Result {
 	comma := ""
 	last := 0
 	for idx := range kvs.keys {
-		lead = fmt.Sprintf("%s%s%s = $%d", lead, comma, kvs.keys[idx], idx+1)
+		lead = fmt.Sprintf("%s%s\"%s\" = $%d", lead, comma, kvs.keys[idx], idx+1)
 		comma = ", "
 		last = idx
 	}
@@ -175,7 +175,7 @@ func Insert(table string, d interface{}) Result {
 	middle := ""
 	comma := ""
 	for idx := range kvs.keys {
-		lead = fmt.Sprintf("%s%s%s ", lead, comma, kvs.keys[idx])
+		lead = fmt.Sprintf("%s%s\"%s\" ", lead, comma, kvs.keys[idx])
 		middle = fmt.Sprintf("%s%s$%d ", middle, comma, idx+1)
 		comma = ", "
 	}

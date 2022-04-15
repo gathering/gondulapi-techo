@@ -190,7 +190,7 @@ func SelectMany(d interface{}, table string, searcher ...interface{}) Result {
 		return Result{Error: newErrorWithCause("enumerate() failed during query. This is bad.", err)}
 	}
 	for idx := range kvs.keys {
-		keys = fmt.Sprintf("%s%s%s", keys, comma, kvs.keys[idx])
+		keys = fmt.Sprintf("%s%s\"%s\"", keys, comma, kvs.keys[idx])
 		comma = ","
 	}
 	strsearch, searcharr := buildWhere(0, search)
