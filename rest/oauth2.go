@@ -82,16 +82,16 @@ func (response *Oauth2LoginData) Post(request *Request) Result {
 	}
 
 	// Check for alternative redirect URL (only allows variations with host=localhost for testing purposes)
-	rawNewRedurectURL, redurectURLFound := request.QueryArgs["redirect_url"]
-	if redurectURLFound {
-		newRedurectURL, newRedurectURLErr := url.Parse(rawNewRedurectURL)
-		if newRedurectURLErr != nil {
+	rawNewRedirectURL, redirectURLFound := request.QueryArgs["redirect-url"]
+	if redirectURLFound {
+		newRedirectURL, newRedirectURLErr := url.Parse(rawNewRedirectURL)
+		if newRedirectURLErr != nil {
 			return Result{Code: 400, Message: "Invalid redirect URL provided"}
 		}
-		if rawNewRedurectURL != oauth2Config.RedirectURL && newRedurectURL.Hostname() != "localhost" {
+		if rawNewRedirectURL != oauth2Config.RedirectURL && newRedirectURL.Hostname() != "localhost" {
 			return Result{Code: 400, Message: "Illegal redirect URL provided"}
 		}
-		oauth2Config.RedirectURL = newRedurectURL.String()
+		oauth2Config.RedirectURL = newRedirectURL.String()
 	}
 
 	// Exchange code for token

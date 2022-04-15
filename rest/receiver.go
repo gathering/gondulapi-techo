@@ -178,17 +178,10 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		if len(authHeaderFields) == 2 && strings.ToLower(authHeaderFields[0]) == "bearer" {
 			tokenKey := authHeaderFields[1]
 			token = loadAccessTokenByKey(tokenKey)
-			if token == nil {
-				output := output{code: 401, data: map[string]string{"message": "Invalid access token specified (expired?)"}}
-				answerRequest(writer, input, output)
-				return
-			}
-		} else {
-			output := output{code: 401, data: map[string]string{"message": "Invalid access token format"}}
-			answerRequest(writer, input, output)
-			return
 		}
-	} else {
+	}
+	// Ignore illegal or malformed token, just give them a guest token instead of complaining
+	if token == nil {
 		token = makeGuestAccessToken()
 	}
 	log.WithFields(log.Fields{
