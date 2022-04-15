@@ -132,7 +132,7 @@ func (stations *Stations) Get(request *rest.Request) rest.Result {
 
 	// Fetch stations to TMP list
 	tmpStations := make(Stations, 0)
-	dbResult := db.SelectMany(tmpStations, "stations", whereArgs...)
+	dbResult := db.SelectMany(&tmpStations, "stations", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
