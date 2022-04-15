@@ -5,7 +5,7 @@
 set -eu
 
 # Show only assigned stations
-#manage/db-cmd.sh <<<"select s.track, s.shortname as station, u.username, u.display_name, t.notes, t.id as timeslot from stations as s join timeslots as t on s.timeslot = t.id join users as u on u.id = t.user_id order by s.track asc, s.shortname asc;"
+#manage/db-cmd.sh <<<"select s.track, s.shortname as station, u.username, u.display_name, t.notes, t.id as timeslot from stations as s join timeslots as t on s.timeslot = t.id join users as u on u.id = t.user order by s.track asc, s.shortname asc;"
 
 # Show all stations
-manage/db-cmd.sh <<<"select s.track, s.shortname as station, s.status, u.username, u.display_name, t.notes, t.id as timeslot from stations as s left join timeslots as t on s.timeslot = t.id left join users as u on u.id = t.user_id where s.status != 'terminated' order by s.track asc, s.shortname asc;"
+manage/db-cmd.sh <<<"select s.track, s.shortname as station, s.status, u.username, u.display_name, t.notes, t.id as timeslot from stations as s left join timeslots as t on s.timeslot = t.id left join users as u on u.id = t.user where s.status != 'terminated' order by s.track asc, s.shortname asc;"

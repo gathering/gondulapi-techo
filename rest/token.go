@@ -177,8 +177,8 @@ func loadAccessTokenByKey(key string) *AccessTokenEntry {
 		token.OwnerUser = user
 		if userErr != nil {
 			log.WithFields(log.Fields{
-				"token_id": token.ID,
-				"user_id":  token.OwnerUserID,
+				"token": token.ID,
+				"user":  token.OwnerUserID,
 			}).WithError(userErr).Warning("Failed to referenced user from token")
 			return nil
 		}

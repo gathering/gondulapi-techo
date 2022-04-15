@@ -33,7 +33,7 @@ import (
 // Timeslot is a participation object used both for registration (without time and station), planning (with time) and station binding (station with this timeslot).
 type Timeslot struct {
 	ID        *uuid.UUID `column:"id" json:"id"`                 // Generated, required, unique
-	UserID    *uuid.UUID `column:"user_id" json:"user_id"`       // Required
+	UserID    *uuid.UUID `column:"user" json:"user"`             // Required
 	TrackID   string     `column:"track" json:"track"`           // Required
 	BeginTime *time.Time `column:"begin_time" json:"begin_time"` // Empty upon registration, used strictly for manual purposes
 	EndTime   *time.Time `column:"end_time" json:"end_time"`     // Empty upon registration, used strictly for manual purposes
@@ -61,7 +61,7 @@ func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
 	// Check params and prep filtering
 	now := time.Now()
 	var whereArgs []interface{}
-	if userID, ok := request.QueryArgs["user-id"]; ok {
+	if userID, ok := request.QueryArgs["user"]; ok {
 		whereArgs = append(whereArgs, "user_id", "=", userID)
 	}
 	if trackID, ok := request.QueryArgs["track"]; ok {
@@ -343,7 +343,7 @@ func (timeslot *Timeslot) validate() rest.Result {
 func (timeslot *Timeslot) userHasAnotherUnfinishedTimeslot() (bool, error) {
 	now := time.Now()
 	var count int
-	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id != $1 AND track = $2 AND user_id = $3 AND (end_time IS NULL OR end_time >= $4)", timeslot.ID, timeslot.TrackID, timeslot.UserID, now)
+	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id != $1 AND track = $2 AND user = $3 AND (end_time IS NULL OR end_time >= $4)", timeslot.ID, timeslot.TrackID, timeslot.UserID, now)
 	rowErr := row.Scan(&count)
 	if rowErr != nil {
 		return false, rowErr

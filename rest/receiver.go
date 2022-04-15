@@ -381,6 +381,7 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
+				log.WithError(err).Trace("Failed to unmarshal JSON for endpoint")
 				result.Code = 400
 				result.Message = "malformed data for endpoint"
 				return
@@ -398,6 +399,7 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
+				log.WithError(err).Trace("Failed to unmarshal JSON for endpoint")
 				result.Code = 400
 				result.Message = "malformed data for endpoint"
 				return

@@ -152,7 +152,7 @@ func (stations *Stations) Get(request *rest.Request) rest.Result {
 			var timeslot Timeslot
 			timeslotDBResult := db.Select(&timeslot, "timeslots",
 				"id", "=", station.TimeslotID,
-				"user_id", "=", requestUserID,
+				"user", "=", requestUserID,
 			)
 			if timeslotDBResult.IsFailed() {
 				return rest.Result{Code: 500, Error: timeslotDBResult.Error}
@@ -199,7 +199,7 @@ func (station *Station) Get(request *rest.Request) rest.Result {
 		var timeslot Timeslot
 		timeslotDBResult := db.Select(&timeslot, "timeslots",
 			"id", "=", station.TimeslotID,
-			"user_id", "=", requestUserID,
+			"user", "=", requestUserID,
 		)
 		if timeslotDBResult.IsFailed() {
 			return rest.Result{Code: 500, Error: timeslotDBResult.Error}

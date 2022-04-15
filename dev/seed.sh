@@ -55,8 +55,8 @@ curl -sSf $ENDPOINT_TRACK --data '{"track": "net", "shortname": "task1", "name":
 echo
 echo "Seeding timeslots ..."
 ENDPOINT_TIMESLOT="${ENDPOINT}admin/timeslot/"
-curl -sSf $ENDPOINT_TIMESLOT --data '{"user_id": "396345b4-553a-4254-97dc-778bea02a86a", "track": "server"}'
-curl -sSf $ENDPOINT_TIMESLOT --data '{"id": "86fb0380-647f-471f-9df0-d61ff38f6e98", "user_id": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "begin_time": "2020-03-27T12:12:18.927291Z", "end_time": "3020-03-27T13:12:18.927291Z"}'
+curl -sSf $ENDPOINT_TIMESLOT --data '{"user": "396345b4-553a-4254-97dc-778bea02a86a", "track": "server"}'
+curl -sSf $ENDPOINT_TIMESLOT --data '{"id": "86fb0380-647f-471f-9df0-d61ff38f6e98", "user": "396345b4-553a-4254-97dc-778bea02a86a", "track": "net", "begin_time": "2020-03-27T12:12:18.927291Z", "end_time": "3020-03-27T13:12:18.927291Z"}'
 
 # Stations
 echo
