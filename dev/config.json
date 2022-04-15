@@ -19,7 +19,8 @@
 			"task_type": "1",
 			"auth_username": "TODO",
 			"auth_password": "TODO",
-			"max_instances": 10
+			"max_instances_soft": 10,
+			"max_instances_hard": 20
 		}
 	},
 	"access_tokens": {

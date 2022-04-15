@@ -80,6 +80,7 @@ CREATE TABLE public.stations (
     "track" text NOT NULL,
     "shortname" text NOT NULL,
     "name" text NOT NULL,
+    "default_status" text NOT NULL,
     "status" text NOT NULL,
     "credentials" text NOT NULL,
     "notes" text NOT NULL,

@@ -47,18 +47,19 @@ type Track struct {
 type Tracks []*Track
 
 func init() {
-	// TODO
-	// rest.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
-	// rest.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
+	rest.AddHandler("/tracks/", "^$", func() interface{} { return &Tracks{} })
+	rest.AddHandler("/track/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Track{} })
 }
 
 // Get gets multiple tracks.
 func (tracks *Tracks) Get(request *rest.Request) rest.Result {
+	// Check params, prep filtering
 	var whereArgs []interface{}
 	if trackType, ok := request.QueryArgs["type"]; ok {
 		whereArgs = append(whereArgs, "type", "=", trackType)
 	}
 
+	// Get
 	dbResult := db.SelectMany(tracks, "tracks", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -66,13 +67,15 @@ func (tracks *Tracks) Get(request *rest.Request) rest.Result {
 	return rest.Result{}
 }
 
-// Get gets a single station.
+// Get gets a single track.
 func (track *Track) Get(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Get
 	dbResult := db.Select(track, "tracks", "id", "=", id)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -83,35 +86,49 @@ func (track *Track) Get(request *rest.Request) rest.Result {
 	return rest.Result{}
 }
 
-// Post creates a new station.
+// Post creates a new track.
 func (track *Track) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Validate
 	if result := track.validate(); !result.IsOk() {
 		return result
 	}
 
+	// Check if duplicate
 	if exists, err := track.exists(); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	} else if exists {
 		return rest.Result{Code: 409, Message: "duplicate ID"}
 	}
 
+	// Create and redirect
 	result := track.create()
 	if !result.IsOk() {
 		return result
 	}
-
 	result.Code = 201
 	result.Location = fmt.Sprintf("%v/track/%v/", config.Config.SitePrefix, track.ID)
 	return result
 }
 
-// Put updates a station.
+// Put updates a track.
 func (track *Track) Put(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Validate
 	if track.ID != id {
 		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
@@ -119,24 +136,24 @@ func (track *Track) Put(request *rest.Request) rest.Result {
 		return result
 	}
 
-	exists, existsErr := track.exists()
-	if existsErr != nil {
-		return rest.Result{Code: 500, Error: existsErr}
-	}
-	if !exists {
-		return rest.Result{Code: 404, Message: "not found"}
-	}
-
+	// Create or update
 	return track.createOrUpdate()
 }
 
-// Delete deletes a station.
+// Delete deletes a track.
 func (track *Track) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Check if it exists
 	track.ID = id
 	exists, err := track.exists()
 	if err != nil {
@@ -146,6 +163,7 @@ func (track *Track) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete
 	dbResult := db.Delete("tracks", "id", "=", track.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}

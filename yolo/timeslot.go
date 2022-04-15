@@ -40,33 +40,25 @@ type Timeslot struct {
 	Notes     string     `column:"notes" json:"notes"`           // Optional
 }
 
-// TimeslotForAdmins is a timeslot, accessible only by admins.
-type TimeslotForAdmins Timeslot
-
 // Timeslots is a list of timeslots.
 type Timeslots []*Timeslot
 
-// TimeslotsForAdmins is a list of timeslots, accessible only by admins.
-type TimeslotsForAdmins []*TimeslotForAdmins
+// TimeslotBeginRequest is for finding and binding a station to the timeslot.
+type TimeslotBeginRequest struct{}
 
-// TimeslotAssignStationRequest is for finding and binding a station to the timeslot.
-type TimeslotAssignStationRequest struct{}
-
-// TimeslotFinishRequest is for requesting a timeslot to finish.
-type TimeslotFinishRequest struct{}
+// TimeslotEndRequest is for requesting a timeslot to finish.
+type TimeslotEndRequest struct{}
 
 func init() {
-	// TODO
-	// rest.AddHandler("/admin/timeslots/", "^$", func() interface{} { return &TimeslotsForAdmins{} })
-	// rest.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
-	// rest.AddHandler("/admin/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &TimeslotForAdmins{} })
-	// rest.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
-	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/assign-station/$", func() interface{} { return &TimeslotAssignStationRequest{} })
-	// rest.AddHandler("/admin/timeslot/", "^(?P<id>[^/]+)/finish/$", func() interface{} { return &TimeslotFinishRequest{} })
+	rest.AddHandler("/timeslots/", "^$", func() interface{} { return &Timeslots{} })
+	rest.AddHandler("/timeslot/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Timeslot{} })
+	rest.AddHandler("/timeslot/", "^(?P<id>[^/]+)/begin/$", func() interface{} { return &TimeslotBeginRequest{} })
+	rest.AddHandler("/timeslot/", "^(?P<id>[^/]+)/end/$", func() interface{} { return &TimeslotEndRequest{} })
 }
 
 // Get gets multiple timeslots.
-func (timeslots *TimeslotsForAdmins) Get(request *rest.Request) rest.Result {
+func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
+	// Check params and prep filtering
 	now := time.Now()
 	var whereArgs []interface{}
 	if userID, ok := request.QueryArgs["user-id"]; ok {
@@ -76,20 +68,38 @@ func (timeslots *TimeslotsForAdmins) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "track", "=", trackID)
 	}
 
+	// Find
 	dbResult := db.SelectMany(timeslots, "timeslots", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
 
-	// Post-fetch filtering (expensive and easy to do outside SQL but hard to do with DB layer)
+	// If not operator/admin, hide all non-self-assigned
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
+		oldTimeslots := *timeslots
+		*timeslots = make(Timeslots, 0)
+		requestUserID := request.AccessToken.OwnerUserID
+		if requestUserID == nil {
+			// No access, just leave now
+			return rest.Result{}
+		}
+		for _, timeslot := range oldTimeslots {
+			if timeslot.UserID == requestUserID {
+				*timeslots = append(*timeslots, timeslot)
+			}
+		}
+	}
+
+	// Post-fetch filtering (easy but expensive to do here, hard to do with current DB layer)
 	_, notEnded := request.QueryArgs["not-ended"]
 	_, assignedStation := request.QueryArgs["assigned-station"]
 	_, notAssignedStation := request.QueryArgs["not-assigned-station"]
 	if notEnded || assignedStation || notAssignedStation {
 		oldTimeslots := *timeslots
-		*timeslots = make(TimeslotsForAdmins, 0)
+		*timeslots = make(Timeslots, 0)
 		for _, timeslot := range oldTimeslots {
-			stationsExist, err := timeslot.stationsExistWithThis()
+			// TODO optimize
+			stationsExist, err := timeslot.isActiveWithStation()
 			if err != nil {
 				return rest.Result{Code: 500, Error: err}
 			}
@@ -109,35 +119,15 @@ func (timeslots *TimeslotsForAdmins) Get(request *rest.Request) rest.Result {
 	return rest.Result{}
 }
 
-// Get gets multiple timeslots.
-func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
-	var whereArgs []interface{}
-	if trackID, ok := request.QueryArgs["track"]; ok {
-		whereArgs = append(whereArgs, "track", "=", trackID)
-	}
-
-	// Require user ID.
-	userID, userIDOk := request.QueryArgs["user-id"]
-	if userIDOk {
-		whereArgs = append(whereArgs, "user_id", "=", userID)
-	} else {
-		return rest.Result{Code: 400, Message: "missing user ID"}
-	}
-
-	dbResult := db.SelectMany(timeslots, "timeslots", whereArgs...)
-	if dbResult.IsFailed() {
-		return rest.Result{Code: 500, Error: dbResult.Error}
-	}
-	return rest.Result{}
-}
-
 // Get gets a single timeslot.
-func (timeslot *TimeslotForAdmins) Get(request *rest.Request) rest.Result {
+func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Get
 	dbResult := db.Select(timeslot, "timeslots", "id", "=", id)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -145,36 +135,65 @@ func (timeslot *TimeslotForAdmins) Get(request *rest.Request) rest.Result {
 	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
+
+	// Only show if operator/admin or if self-assigned
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
+		if request.AccessToken.OwnerUserID != timeslot.UserID {
+			return rest.Result{Code: 403, Message: "Permission denied"}
+		}
+	}
+
 	return rest.Result{}
 }
 
 // Post creates a new timeslot.
-func (timeslot *TimeslotForAdmins) Post(request *rest.Request) rest.Result {
+func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
+	// Check params
 	if timeslot.ID == nil {
 		newID := uuid.New()
 		timeslot.ID = &newID
 	}
+
+	// Validate
 	if result := timeslot.validate(); !result.IsOk() {
 		return result
 	}
 
+	// Only allow if operator/admin or if self-assigned
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
+		if request.AccessToken.OwnerUserID == timeslot.UserID {
+			// Limit access to certain fields if self-assigned and not operator/admin
+			timeslot.BeginTime = nil
+			timeslot.EndTime = nil
+		} else {
+			return rest.Result{Code: 403, Message: "Permission denied"}
+		}
+	}
+
+	// Create and redirect
 	result := timeslot.create()
 	if !result.IsOk() {
 		return result
 	}
-
 	result.Code = 201
 	result.Location = fmt.Sprintf("%v/timeslot/%v/", config.Config.SitePrefix, timeslot.ID)
 	return result
 }
 
 // Put updates a timeslot.
-func (timeslot *TimeslotForAdmins) Put(request *rest.Request) rest.Result {
+func (timeslot *Timeslot) Put(request *rest.Request) rest.Result {
+	// Check perms, only operators/admins may change existing ones
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Validate
 	if timeslot.ID != nil && (*timeslot.ID).String() != id {
 		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
@@ -182,11 +201,18 @@ func (timeslot *TimeslotForAdmins) Put(request *rest.Request) rest.Result {
 		return result
 	}
 
+	// Update or create
 	return timeslot.createOrUpdate()
 }
 
 // Delete deletes a timeslot.
-func (timeslot *TimeslotForAdmins) Delete(request *rest.Request) rest.Result {
+func (timeslot *Timeslot) Delete(request *rest.Request) rest.Result {
+	// Check perms, only operators/admins may change existing ones
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
@@ -196,6 +222,7 @@ func (timeslot *TimeslotForAdmins) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
+	// Check if it exists
 	timeslot.ID = &id
 	exists, existsErr := timeslot.exists()
 	if existsErr != nil {
@@ -205,6 +232,7 @@ func (timeslot *TimeslotForAdmins) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete it
 	dbResult := db.Delete("timeslots", "id", "=", timeslot.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -212,53 +240,7 @@ func (timeslot *TimeslotForAdmins) Delete(request *rest.Request) rest.Result {
 	return rest.Result{}
 }
 
-// Get gets a single timeslot.
-func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
-	id, idExists := request.PathArgs["id"]
-	if !idExists || id == "" {
-		return rest.Result{Code: 400, Message: "missing ID"}
-	}
-
-	// Require user ID.
-	userStrID, userStrIDOk := request.QueryArgs["user-id"]
-	if !userStrIDOk {
-		return rest.Result{Code: 400, Message: "missing user ID"}
-	}
-	userID, userIDParseErr := uuid.Parse(userStrID)
-	if userIDParseErr != nil {
-		return rest.Result{Code: 400, Message: "invalid user ID"}
-	}
-
-	// Proxy.
-	timeslotForAdmins := TimeslotForAdmins(*timeslot)
-	result := timeslotForAdmins.Get(request)
-	if !result.IsOk() {
-		return result
-	}
-
-	// Validate ID.
-	if *timeslotForAdmins.UserID != userID {
-		return rest.Result{Code: 400, Message: "invalid ID"}
-	}
-
-	*timeslot = Timeslot(timeslotForAdmins)
-	return result
-}
-
-// Post creates a new timeslot.
-func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
-	// Limit access to certain fields
-	timeslot.BeginTime = nil
-	timeslot.EndTime = nil
-
-	// Proxy, no user ID validation.
-	timeslotForAdmins := TimeslotForAdmins(*timeslot)
-	result := timeslotForAdmins.Post(request)
-	*timeslot = Timeslot(timeslotForAdmins)
-	return result
-}
-
-func (timeslot *TimeslotForAdmins) create() rest.Result {
+func (timeslot *Timeslot) create() rest.Result {
 	if exists, err := timeslot.exists(); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	} else if exists {
@@ -272,7 +254,7 @@ func (timeslot *TimeslotForAdmins) create() rest.Result {
 	return rest.Result{}
 }
 
-func (timeslot *TimeslotForAdmins) createOrUpdate() rest.Result {
+func (timeslot *Timeslot) createOrUpdate() rest.Result {
 	exists, existsErr := timeslot.exists()
 	if existsErr != nil {
 		return rest.Result{Code: 500, Error: existsErr}
@@ -290,7 +272,7 @@ func (timeslot *TimeslotForAdmins) createOrUpdate() rest.Result {
 	return rest.Result{}
 }
 
-func (timeslot *TimeslotForAdmins) exists() (bool, error) {
+func (timeslot *Timeslot) exists() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id = $1", timeslot.ID)
 	rowErr := row.Scan(&count)
@@ -300,7 +282,7 @@ func (timeslot *TimeslotForAdmins) exists() (bool, error) {
 	return count > 0, nil
 }
 
-func (timeslot *TimeslotForAdmins) existsWithTrack(trackID string) (bool, error) {
+func (timeslot *Timeslot) existsWithTrack(trackID string) (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id = $1 AND track = $2", timeslot.ID, trackID)
 	rowErr := row.Scan(&count)
@@ -310,7 +292,7 @@ func (timeslot *TimeslotForAdmins) existsWithTrack(trackID string) (bool, error)
 	return count > 0, nil
 }
 
-func (timeslot *TimeslotForAdmins) stationsExistWithThis() (bool, error) {
+func (timeslot *Timeslot) isActiveWithStation() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE track = $1 AND timeslot = $2", timeslot.TrackID, timeslot.ID)
 	rowErr := row.Scan(&count)
@@ -320,7 +302,7 @@ func (timeslot *TimeslotForAdmins) stationsExistWithThis() (bool, error) {
 	return count > 0, nil
 }
 
-func (timeslot *TimeslotForAdmins) validate() rest.Result {
+func (timeslot *Timeslot) validate() rest.Result {
 	switch {
 	case timeslot.ID == nil:
 		return rest.Result{Code: 400, Message: "missing ID"}
@@ -347,8 +329,8 @@ func (timeslot *TimeslotForAdmins) validate() rest.Result {
 		return rest.Result{Code: 400, Message: "referenced track does not exist"}
 	}
 
-	// Check if the user has a timeslot for the current track which hasn't ended yet.
-	if has, err := timeslot.hasCurrentTimeslot(); err != nil {
+	// Check if the user has a timeslot for the current track which hasn't ended yet
+	if has, err := timeslot.userHasAnotherUnfinishedTimeslot(); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	} else if has {
 		return rest.Result{Code: 409, Message: "user currently has timeslot for this track"}
@@ -357,7 +339,8 @@ func (timeslot *TimeslotForAdmins) validate() rest.Result {
 	return rest.Result{}
 }
 
-func (timeslot *TimeslotForAdmins) hasCurrentTimeslot() (bool, error) {
+// Check if the user has another non-ended timeslot for the current track.
+func (timeslot *Timeslot) userHasAnotherUnfinishedTimeslot() (bool, error) {
 	now := time.Now()
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM timeslots WHERE id != $1 AND track = $2 AND user_id = $3 AND (end_time IS NULL OR end_time >= $4)", timeslot.ID, timeslot.TrackID, timeslot.UserID, now)
@@ -369,20 +352,23 @@ func (timeslot *TimeslotForAdmins) hasCurrentTimeslot() (bool, error) {
 }
 
 // Post attempts to find an available station to bind to the timeslot.
-func (assignStationRequest *TimeslotAssignStationRequest) Post(request *rest.Request) rest.Result {
+// It allows users to automatically get assigned to a "ready" net-track station,
+// or a server-track station if below the soft limit.
+func (beginRequest *TimeslotBeginRequest) Post(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
-		return rest.Result{Code: 400, Message: "missing ID"}
+		return rest.Result{Code: 400, Message: "Missing ID"}
 	}
 
-	// Get the things
-	var timeslot TimeslotForAdmins
+	// Get timeslot and track
+	var timeslot Timeslot
 	timeslotDBResult := db.Select(&timeslot, "timeslots", "id", "=", id)
 	if timeslotDBResult.IsFailed() {
 		return rest.Result{Code: 500, Error: timeslotDBResult.Error}
 	}
 	if !timeslotDBResult.IsSuccess() {
-		return rest.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "Not found"}
 	}
 	var track Track
 	trackDBResult := db.Select(&track, "tracks", "id", "=", timeslot.TrackID)
@@ -390,65 +376,86 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *rest.Req
 		return rest.Result{Code: 500, Error: trackDBResult.Error}
 	}
 	if !trackDBResult.IsSuccess() {
-		return rest.Result{Code: 404, Message: "track not found"}
+		return rest.Result{Code: 404, Message: "Track not found"}
 	}
 
-	var station *Station
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
 
-	// Get all available station
-	var stations Stations
-	stationsDBResult := db.SelectMany(&stations, "stations",
+	// Find all ready/available stations
+	var unboundStations Stations
+	unboundStationsDBResult := db.SelectMany(&unboundStations, "stations",
 		"track", "=", timeslot.TrackID,
-		"status", "=", StationStatusActive,
 		"timeslot", "=", "",
 	)
-	if stationsDBResult.IsFailed() {
-		return rest.Result{Code: 500, Error: stationsDBResult.Error}
+	if unboundStationsDBResult.IsFailed() {
+		return rest.Result{Code: 500, Error: unboundStationsDBResult.Error}
 	}
-	if len(stations) > 0 {
-		station = stations[0]
+	var choosableStations Stations
+	for _, station := range unboundStations {
+		if station.Status == StationStatusReady {
+			choosableStations = append(choosableStations, station)
+		} else if station.Status == StationStatusAvailable && (request.AccessToken.GetRole() == rest.RoleOperator || request.AccessToken.GetRole() == rest.RoleAdmin) {
+			choosableStations = append(choosableStations, station)
+		}
+	}
+
+	// Pick a station if any ready/available
+	var chosenStation *Station
+	if len(choosableStations) > 0 {
+		// TODO allow choosing using query param
+		chosenStation = choosableStations[0]
 	}
 
 	// If server and no available, try to allocate one
-	if track.Type == trackTypeServer && station == nil {
-		// Check limit (with friendly 404s instead of 400s)
+	if track.Type == trackTypeServer && chosenStation == nil {
+		// Check if dynamic provisioning enabled
 		trackConfig, trackConfigOk := config.Config.ServerTracks[track.ID]
 		if !trackConfigOk || trackConfig.BaseURL == "" {
 			return rest.Result{Code: 404, Message: "no available stations and track not configured for dynamic stations"}
 		}
-		maxStations := trackConfig.MaxInstances
-		if maxStations > 0 {
-			currentRow := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE track = $1 AND status != $2", track.ID, StationStatusTerminated)
-			var count int
-			currentRowErr := currentRow.Scan(&count)
-			if currentRowErr != nil {
-				return rest.Result{Code: 500, Error: currentRowErr}
+
+		// Check current count
+		currentRow := db.DB.QueryRow("SELECT COUNT(*) FROM stations WHERE track = $1 AND status != $2", track.ID, StationStatusTerminated)
+		var count int
+		currentRowErr := currentRow.Scan(&count)
+		if currentRowErr != nil {
+			return rest.Result{Code: 500, Error: currentRowErr}
+		}
+
+		// Check if allowed
+		if request.AccessToken.GetRole() == rest.RoleOperator || request.AccessToken.GetRole() == rest.RoleAdmin {
+			if count >= trackConfig.MaxInstancesHard {
+				return rest.Result{Code: 404, Message: "no available stations and hard limit for dynamic stations reached"}
 			}
-			if count+1 > maxStations {
-				return rest.Result{Code: 404, Message: "no available stations and limit for dynamic stations reached"}
+		} else {
+			if count >= trackConfig.MaxInstancesSoft {
+				return rest.Result{Code: 404, Message: "no available stations and soft limit for dynamic stations reached"}
 			}
 		}
 
 		// Allocate one
-		station = &Station{}
-		if result := station.Provision(track.ID); !result.IsOk() {
+		chosenStation = &Station{}
+		if result := chosenStation.Provision(track.ID); !result.IsOk() {
 			return result
 		}
 	}
 
 	// Check if an available station was found or created
-	if station == nil {
+	if chosenStation == nil {
 		return rest.Result{Code: 404, Message: "no available stations"}
 	}
 
-	// Take station and save
-	station.TimeslotID = timeslot.ID.String()
-	station.Status = StationStatusActive
-	if result := station.createOrUpdate(); !result.IsOk() {
+	// Update station, but keep the station status as-is
+	chosenStation.TimeslotID = timeslot.ID.String()
+	if result := chosenStation.createOrUpdate(); !result.IsOk() {
 		return result
 	}
 
-	// Update begin and end times and save
+	// Update timeslot
+	// Warning: Potential race condition, but people are slow.
 	beginTime := time.Now()
 	timeslot.BeginTime = &beginTime
 	endTime := time.Now().AddDate(1000, 0, 0) // +1000 years
@@ -457,18 +464,20 @@ func (assignStationRequest *TimeslotAssignStationRequest) Post(request *rest.Req
 		return result
 	}
 
-	return rest.Result{Code: 303, Location: fmt.Sprintf("%v/station/%v/", config.Config.SitePrefix, station.ID)}
+	return rest.Result{Code: 303, Location: fmt.Sprintf("%v/station/%v/", config.Config.SitePrefix, chosenStation.ID)}
 }
 
-// Post finishes a timeslot.
-func (finishRequest *TimeslotFinishRequest) Post(request *rest.Request) rest.Result {
+// Post ends a timeslot.
+// May be called by users assigned to the slot or by operators/admins.
+func (endRequest *TimeslotEndRequest) Post(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
 	// Get the things
-	var timeslot TimeslotForAdmins
+	var timeslot Timeslot
 	timeslotDBResult := db.Select(&timeslot, "timeslots", "id", "=", id)
 	if timeslotDBResult.IsFailed() {
 		return rest.Result{Code: 500, Error: timeslotDBResult.Error}
@@ -493,12 +502,17 @@ func (finishRequest *TimeslotFinishRequest) Post(request *rest.Request) rest.Res
 		return rest.Result{Code: 400, Message: "no station assigned to this timeslot"}
 	}
 
-	// Check stuff
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Validate stuff
 	if station.TrackID != track.ID {
 		return rest.Result{Code: 400, Message: "inconsistency between timeslot track and assigned station track (contact support)"}
 	}
 
-	// Update end time
+	// Update end time (and begin time if invalid)
 	now := time.Now()
 	timeslot.EndTime = &now
 	if timeslot.BeginTime == nil || timeslot.BeginTime.After(*timeslot.EndTime) {

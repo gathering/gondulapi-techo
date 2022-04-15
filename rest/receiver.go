@@ -282,11 +282,13 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 		case output.code >= 200 && output.code <= 299:
 			// Data
 			if output.code == 204 {
+				// No data allowed
 				output.data = nil
 			} else if handlerData == nil {
 				// Show report if no returned data
 				output.data = result
 			} else {
+				// Show data
 				output.data = handlerData
 			}
 			// Location
@@ -294,15 +296,19 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 				output.location = result.Location
 			}
 		case output.code >= 300 && output.code <= 399:
+			// Hide data
 			output.data = result
 			output.location = result.Location
 		case output.code >= 400 && output.code <= 499:
+			// Always hide data on error
 			output.data = result
 		default:
+			// Overwrite both code and data if something weird
 			output.code = 500
 			output.data = message("internal server error")
 		}
 
+		// OPTIONS and HEAD must never return data
 		if input.method == "OPTIONS" || input.method == "HEAD" {
 			output.data = nil
 		}

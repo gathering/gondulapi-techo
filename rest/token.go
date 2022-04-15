@@ -53,6 +53,8 @@ const (
 	RoleAdmin Role = "admin"
 	// RoleTester - Access to push test data, for status scripts. Valid for non-user tokens only.
 	RoleTester Role = "tester"
+	// RoleRunner - Access to modify stations, e.g. for updating the status when reprovisioning them. Valid for non-user tokens only.
+	RoleRunner Role = "runner"
 )
 
 // AccessTokenEntry is a collections of access things used for the client to authenticate itself and for the backend to know more about the client.

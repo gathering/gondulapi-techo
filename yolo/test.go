@@ -51,14 +51,15 @@ type Test struct {
 type Tests []*Test
 
 func init() {
-	// TODO
-	// rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
-	// rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
+	rest.AddHandler("/tests/", "^$", func() interface{} { return &Tests{} })
+	rest.AddHandler("/test/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Test{} })
 }
 
 // Get gets multiple tests.
 func (tests *Tests) Get(request *rest.Request) rest.Result {
 	// TODO order by sequence
+
+	// Check params, prep filtering
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -79,6 +80,7 @@ func (tests *Tests) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
+	// Get
 	dbResult := db.SelectMany(tests, "tests", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -88,6 +90,11 @@ func (tests *Tests) Get(request *rest.Request) rest.Result {
 
 // Post posts multiple tests which may overwrite old ones.
 func (tests *Tests) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
 	// Feed individual tests to the individual post endpoint, stop on first error
 	totalResult := rest.Result{}
 	for _, test := range *tests {
@@ -102,6 +109,12 @@ func (tests *Tests) Post(request *rest.Request) rest.Result {
 
 // Delete delete multiple tests.
 func (tests *Tests) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params, prep filtering
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -122,6 +135,7 @@ func (tests *Tests) Delete(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "timeslot", "=", "")
 	}
 
+	// Find all to delete
 	dbResult := db.SelectMany(tests, "tests", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -140,11 +154,13 @@ func (tests *Tests) Delete(request *rest.Request) rest.Result {
 
 // Get gets a single test.
 func (test *Test) Get(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Get
 	dbResult := db.Select(test, "tests", "id", "=", id)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -152,12 +168,16 @@ func (test *Test) Get(request *rest.Request) rest.Result {
 	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
 // Post creates a new test. Existing tests with the same track/task/test/station/timeslot will get overwritten.
 func (test *Test) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
 	// Overwrite certain fields
 	newID := uuid.New()
 	test.ID = &newID
@@ -165,6 +185,7 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 	now := time.Now()
 	test.Timestamp = &now
 
+	// Validate
 	if result := test.validate(); !result.IsOk() {
 		return result
 	}
@@ -179,21 +200,18 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 		return rest.Result{Code: 500, Error: stationDBResult.Error}
 	}
 	if !stationDBResult.IsSuccess() {
-		return rest.Result{Code: 404, Message: "not found"}
+		return rest.Result{Code: 404, Message: "station not found"}
 	}
-	// Accept timeslot ID as-is as the station is already using it
 	test.TimeslotID = station.TimeslotID
 
-	// Delete old tests with and without timeslot
+	// Delete old equivalent tests, both without timeslot and with the current timeslot
 	_, deleteErr := db.DB.Exec("DELETE FROM tests WHERE track = $1 AND task_shortname = $2 AND shortname = $3 AND station_shortname = $4 AND (timeslot = $5 OR timeslot = '')",
 		test.TrackID, test.TaskShortname, test.Shortname, test.StationShortname, test.TimeslotID)
 	if deleteErr != nil {
 		return rest.Result{Code: 500, Error: deleteErr}
 	}
 
-	var totalResult rest.Result
-
-	// Save clone without timeslot (to fetch latest and between timeslots)
+	// Save clone without timeslot
 	if test.TimeslotID != "" {
 		cloneTest := *test
 		cloneTest.TimeslotID = ""
@@ -205,19 +223,24 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 		}
 	}
 
-	// Save original (with timeslot of one was found)
+	// Save original with timeslot
 	result := test.create()
 	if !result.IsOk() {
 		return result
 	}
-
-	totalResult.Code = 201
-	totalResult.Location = fmt.Sprintf("%v/test/%v", config.Config.SitePrefix, test.ID)
-	return totalResult
+	result.Code = 201
+	result.Location = fmt.Sprintf("%v/test/%v", config.Config.SitePrefix, test.ID)
+	return result
 }
 
-// Delete deletes a task.
+// Delete deletes a test.
 func (test *Test) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
@@ -227,6 +250,7 @@ func (test *Test) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
+	// Check if it exists
 	test.ID = &id
 	exists, err := test.exists()
 	if err != nil {
@@ -236,6 +260,7 @@ func (test *Test) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete it
 	dbResult := db.Delete("tests", "id", "=", test.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -310,7 +335,7 @@ func (test *Test) validate() rest.Result {
 		if timeslotIDErr != nil {
 			return rest.Result{Code: 400, Message: "invalid timeslot ID"}
 		}
-		timeslot := TimeslotForAdmins{ID: &timeslotID}
+		timeslot := Timeslot{ID: &timeslotID}
 		if exists, err := timeslot.exists(); err != nil {
 			return rest.Result{Code: 500, Error: err}
 		} else if !exists {

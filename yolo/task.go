@@ -43,14 +43,15 @@ type Task struct {
 type Tasks []*Task
 
 func init() {
-	// TODO
-	// rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
-	// rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
+	rest.AddHandler("/tasks/", "^$", func() interface{} { return &Tasks{} })
+	rest.AddHandler("/task/", "^(?:(?P<id>[^/]+)/)?$", func() interface{} { return &Task{} })
 }
 
 // Get gets multiple tasks.
 func (tasks *Tasks) Get(request *rest.Request) rest.Result {
 	// TODO order by sequence
+
+	// Check params, prep filtering
 	var whereArgs []interface{}
 	if trackID, ok := request.QueryArgs["track"]; ok {
 		whereArgs = append(whereArgs, "track", "=", trackID)
@@ -59,6 +60,7 @@ func (tasks *Tasks) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
 	}
 
+	// Get
 	dbResult := db.SelectMany(tasks, "tasks", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -68,11 +70,13 @@ func (tasks *Tasks) Get(request *rest.Request) rest.Result {
 
 // Get gets a single task.
 func (task *Task) Get(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Get
 	dbResult := db.Select(task, "tasks", "id", "=", id)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -85,6 +89,12 @@ func (task *Task) Get(request *rest.Request) rest.Result {
 
 // Post creates a new task.
 func (task *Task) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Prepare and validate
 	if task.ID == nil {
 		newID := uuid.New()
 		task.ID = &newID
@@ -93,11 +103,11 @@ func (task *Task) Post(request *rest.Request) rest.Result {
 		return result
 	}
 
+	// Create and redirect
 	result := task.create()
 	if !result.IsOk() {
 		return result
 	}
-
 	result.Code = 201
 	result.Location = fmt.Sprintf("%v/task/%v/", config.Config.SitePrefix, task.ID)
 	return result
@@ -105,24 +115,37 @@ func (task *Task) Post(request *rest.Request) rest.Result {
 
 // Put updates a task.
 func (task *Task) Put(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Validate
 	if task.ID != nil && (*task.ID).String() != id {
 		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
-
 	if result := task.validate(); !result.IsOk() {
 		return result
 	}
 
+	// Create or update
 	return task.createOrUpdate()
 }
 
 // Delete deletes a task.
 func (task *Task) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	rawID, rawIDExists := request.PathArgs["id"]
 	if !rawIDExists || rawID == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
@@ -132,6 +155,7 @@ func (task *Task) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "invalid ID"}
 	}
 
+	// Check if exists
 	task.ID = &id
 	exists, err := task.exists()
 	if err != nil {
@@ -141,6 +165,7 @@ func (task *Task) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete
 	dbResult := db.Delete("tasks", "id", "=", task.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -172,6 +197,11 @@ func (task *Task) createOrUpdate() rest.Result {
 	if exists {
 		dbResult = db.Update("tasks", task, "id", "=", task.ID)
 	} else {
+		if exists, err := task.existsTaskShortnameWithDifferentID(); err != nil {
+			return rest.Result{Code: 500, Error: err}
+		} else if exists {
+			return rest.Result{Code: 409, Message: "Shortname is already used with a different task"}
+		}
 		dbResult = db.Insert("tasks", task)
 	}
 	if dbResult.IsFailed() {
@@ -212,12 +242,6 @@ func (task *Task) validate() rest.Result {
 		return rest.Result{Code: 400, Message: "missing name"}
 	}
 
-	if exists, err := task.existsTrackShortname(); err != nil {
-		return rest.Result{Code: 500, Error: err}
-	} else if exists {
-		return rest.Result{Code: 409, Message: "combination of track and shortname already exists"}
-	}
-
 	track := Track{ID: task.TrackID}
 	if exists, err := track.exists(); err != nil {
 		return rest.Result{Code: 500, Error: err}
@@ -228,7 +252,7 @@ func (task *Task) validate() rest.Result {
 	return rest.Result{}
 }
 
-func (task *Task) existsTrackShortname() (bool, error) {
+func (task *Task) existsTaskShortnameWithDifferentID() (bool, error) {
 	var count int
 	row := db.DB.QueryRow("SELECT COUNT(*) FROM tasks WHERE id != $1 AND track = $2 AND shortname = $3", task.ID, task.TrackID, task.Shortname)
 	rowErr := row.Scan(&count)

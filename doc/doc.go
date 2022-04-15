@@ -72,11 +72,13 @@ func (families *DocumentFamilies) Get(request *rest.Request) rest.Result {
 
 // Get gets a single family.
 func (family *DocumentFamily) Get(request *rest.Request) rest.Result {
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Get
 	dbResult := db.Select(family, "document_families", "id", "=", id)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -84,27 +86,33 @@ func (family *DocumentFamily) Get(request *rest.Request) rest.Result {
 	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
 // Post creates a new family.
 func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	if family.ID == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Check if duplicate
 	if exists, err := family.exists(); err != nil {
 		return rest.Result{Code: 500, Error: err}
 	} else if exists {
 		return rest.Result{Code: 409, Message: "duplicate ID"}
 	}
 
+	// Create and redirect
 	result := family.create()
 	if !result.IsOk() {
 		return result
 	}
-
 	result.Code = 201
 	result.Location = fmt.Sprintf("%v/document-family/%v/", config.Config.SitePrefix, family.ID)
 	return result
@@ -112,33 +120,40 @@ func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
 
 // Put updates a family.
 func (family *DocumentFamily) Put(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Validate
 	if family.ID != id {
 		return rest.Result{Code: 400, Message: "mismatch between URL and JSON IDs"}
 	}
 
-	exists, existsErr := family.exists()
-	if existsErr != nil {
-		return rest.Result{Code: 500, Error: existsErr}
-	}
-	if !exists {
-		return rest.Result{Code: 404, Message: "not found"}
-	}
-
+	// Create or update
 	return family.createOrUpdate()
 }
 
 // Delete deletes a family.
 func (family *DocumentFamily) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	id, idExists := request.PathArgs["id"]
 	if !idExists || id == "" {
 		return rest.Result{Code: 400, Message: "missing ID"}
 	}
 
+	// Check if exists
 	family.ID = id
 	exists, err := family.exists()
 	if err != nil {
@@ -148,11 +163,11 @@ func (family *DocumentFamily) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete
 	dbResult := db.Delete("document_families", "id", "=", family.ID)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -205,6 +220,7 @@ func (family *DocumentFamily) exists() (bool, error) {
 
 // Get gets multiple documents.
 func (documents *Documents) Get(request *rest.Request) rest.Result {
+	// Check params, prep filtering
 	var whereArgs []interface{}
 	if shortname, ok := request.QueryArgs["shortname"]; ok {
 		whereArgs = append(whereArgs, "shortname", "=", shortname)
@@ -213,16 +229,21 @@ func (documents *Documents) Get(request *rest.Request) rest.Result {
 		whereArgs = append(whereArgs, "family", "=", familyID)
 	}
 
+	// Get
 	dbResult := db.SelectMany(documents, "documents", whereArgs...)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
 // Put creates or updates multiple documents.
 func (documents *Documents) Put(request *rest.Request) rest.Result {
+	// Check params
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
 	// Feed individual tests to the individual post endpoint, stop on first error
 	totalResult := rest.Result{}
 	for _, document := range *documents {
@@ -233,12 +254,12 @@ func (documents *Documents) Put(request *rest.Request) rest.Result {
 			return result
 		}
 	}
-
 	return totalResult
 }
 
 // Get gets a single document.
 func (document *Document) Get(request *rest.Request) rest.Result {
+	// Check params
 	familyID, familyIDExists := request.PathArgs["family_id"]
 	if !familyIDExists || familyID == "" {
 		return rest.Result{Code: 400, Message: "missing family ID"}
@@ -248,6 +269,7 @@ func (document *Document) Get(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing shortname"}
 	}
 
+	// Get
 	dbResult := db.Select(document, "documents", "family", "=", familyID, "shortname", "=", shortname)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
@@ -255,24 +277,30 @@ func (document *Document) Get(request *rest.Request) rest.Result {
 	if !dbResult.IsSuccess() {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
-
 	return rest.Result{}
 }
 
 // Post creates a new document.
 func (document *Document) Post(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Overwrite stuff
 	now := time.Now()
 	document.LastChange = &now
 
+	// Validate
 	if result := document.validate(); !result.IsOk() {
 		return result
 	}
 
+	// Create and redirect
 	result := document.create()
 	if !result.IsOk() {
 		return result
 	}
-
 	result.Code = 201
 	result.Location = fmt.Sprintf("%v/document/%v/%v/", config.Config.SitePrefix, document.FamilyID, document.Shortname)
 	return result
@@ -280,6 +308,12 @@ func (document *Document) Post(request *rest.Request) rest.Result {
 
 // Put creates or updates a document.
 func (document *Document) Put(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	familyID, familyIDExists := request.PathArgs["family_id"]
 	if !familyIDExists || familyID == "" {
 		return rest.Result{Code: 400, Message: "missing family ID"}
@@ -289,22 +323,30 @@ func (document *Document) Put(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing shortname"}
 	}
 
-	if document.FamilyID != familyID || document.Shortname != shortname {
-		return rest.Result{Code: 400, Message: "mismatch for family ID or shortname between URL and JSON"}
-	}
-
+	// Overwrite stuff
 	now := time.Now()
 	document.LastChange = &now
 
+	// Validate
+	if document.FamilyID != familyID || document.Shortname != shortname {
+		return rest.Result{Code: 400, Message: "mismatch for family ID or shortname between URL and JSON"}
+	}
 	if result := document.validate(); !result.IsOk() {
 		return result
 	}
 
+	// Create or update
 	return document.createOrUpdate()
 }
 
 // Delete deletes a document.
 func (document *Document) Delete(request *rest.Request) rest.Result {
+	// Check perms
+	if request.AccessToken.GetRole() != rest.RoleAdmin {
+		return rest.Result{Code: 403, Message: "Permission denied"}
+	}
+
+	// Check params
 	familyID, familyIDExists := request.PathArgs["family_id"]
 	if !familyIDExists || familyID == "" {
 		return rest.Result{Code: 400, Message: "missing family ID"}
@@ -314,6 +356,7 @@ func (document *Document) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 400, Message: "missing shortname"}
 	}
 
+	// Check if it exists
 	document.FamilyID = familyID
 	document.Shortname = shortname
 	exists, err := document.exists()
@@ -324,11 +367,11 @@ func (document *Document) Delete(request *rest.Request) rest.Result {
 		return rest.Result{Code: 404, Message: "not found"}
 	}
 
+	// Delete it
 	dbResult := db.Delete("documents", "family", "=", document.FamilyID, "shortname", "=", document.Shortname)
 	if dbResult.IsFailed() {
 		return rest.Result{Code: 500, Error: dbResult.Error}
 	}
-
 	return rest.Result{}
 }
 
@@ -387,13 +430,6 @@ func (document *Document) validate() rest.Result {
 		return rest.Result{Code: 400, Message: "missing shortname"}
 	case document.LastChange == nil:
 		return rest.Result{Code: 400, Message: "missing last update time"}
-	}
-
-	family := DocumentFamily{ID: document.FamilyID}
-	if exists, err := family.exists(); err != nil {
-		return rest.Result{Code: 500, Error: err}
-	} else if !exists {
-		return rest.Result{Code: 400, Message: "referenced family does not exist"}
 	}
 
 	return rest.Result{}

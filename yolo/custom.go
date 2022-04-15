@@ -55,12 +55,11 @@ type stationTasksTestsTask struct {
 }
 
 func init() {
-	// TODO
-	// rest.AddHandler("/custom/track-stations/", "^(?P<track_id>[^/]+)/$", func() interface{} { return &TrackStations{} })
-	// rest.AddHandler("/custom/station-tasks-tests/", "^(?P<track_id>[^/]+)/(?P<station_shortname>[^/]+)/$", func() interface{} { return &StationTasksTests{} })
+	rest.AddHandler("/custom/track-stations/", "^(?P<track_id>[^/]+)/$", func() interface{} { return &TrackStations{} })
+	rest.AddHandler("/custom/station-tasks-tests/", "^(?P<track_id>[^/]+)/(?P<station_shortname>[^/]+)/$", func() interface{} { return &StationTasksTests{} })
 }
 
-// Get creates a a big mess of data consisting of a track and all active stations for it.
+// Get creates a a big mess of data consisting of a track and all non-terminated stations for it.
 func (trackAndStations *TrackStations) Get(request *rest.Request) rest.Result {
 	trackID, trackIDExists := request.PathArgs["track_id"]
 	if !trackIDExists || trackID == "" {
@@ -71,7 +70,9 @@ func (trackAndStations *TrackStations) Get(request *rest.Request) rest.Result {
 	var track Track
 	trackRow := db.DB.QueryRow("SELECT id,type,name FROM tracks WHERE id = $1", trackID)
 	trackErr := trackRow.Scan(&track.ID, &track.Type, &track.Name)
-	if trackErr != nil {
+	if trackErr == sql.ErrNoRows {
+		return rest.Result{}
+	} else if trackErr != nil {
 		return rest.Result{Error: trackErr}
 	}
 	trackAndStations.ID = track.ID
@@ -81,11 +82,13 @@ func (trackAndStations *TrackStations) Get(request *rest.Request) rest.Result {
 	// Scan stations
 	dbResult := db.SelectMany(&trackAndStations.Stations, "stations",
 		"track", "=", track.ID,
-		"status", "=", StationStatusActive,
+		"status", "!=", StationStatusTerminated,
 	)
 	if dbResult.IsFailed() {
 		return rest.Result{Error: dbResult.Error}
 	}
+
+	// Hide station credentials
 	for _, station := range trackAndStations.Stations {
 		station.Credentials = ""
 	}
