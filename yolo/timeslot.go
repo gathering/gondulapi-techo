@@ -61,7 +61,7 @@ func (timeslots *Timeslots) Get(request *rest.Request) rest.Result {
 	// Check params and prep filtering
 	now := time.Now()
 	var whereArgs []interface{}
-	if userID, ok := request.QueryArgs["user-id"]; ok {
+	if userID, ok := request.QueryArgs["user"]; ok {
 		whereArgs = append(whereArgs, "user", "=", userID)
 	}
 	if trackID, ok := request.QueryArgs["track"]; ok {
