@@ -139,7 +139,7 @@ func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
 	// Only show if operator/admin or if self-assigned
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
 		if request.AccessToken.OwnerUserID != timeslot.UserID {
-			return rest.Result{Code: 403, Message: "Permission denied"}
+			return rest.UnauthorizedResult(*request.AccessToken)
 		}
 	}
 
@@ -166,7 +166,7 @@ func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
 			timeslot.BeginTime = nil
 			timeslot.EndTime = nil
 		} else {
-			return rest.Result{Code: 403, Message: "Permission denied"}
+			return rest.UnauthorizedResult(*request.AccessToken)
 		}
 	}
 
@@ -184,7 +184,7 @@ func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
 func (timeslot *Timeslot) Put(request *rest.Request) rest.Result {
 	// Check perms, only operators/admins may change existing ones
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -209,7 +209,7 @@ func (timeslot *Timeslot) Put(request *rest.Request) rest.Result {
 func (timeslot *Timeslot) Delete(request *rest.Request) rest.Result {
 	// Check perms, only operators/admins may change existing ones
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -381,7 +381,7 @@ func (beginRequest *TimeslotBeginRequest) Post(request *rest.Request) rest.Resul
 
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Find all ready/available stations
@@ -504,7 +504,7 @@ func (endRequest *TimeslotEndRequest) Post(request *rest.Request) rest.Result {
 
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Validate stuff

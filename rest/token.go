@@ -251,6 +251,12 @@ func (token *AccessTokenEntry) GetRole() Role {
 	return RoleInvalid
 }
 
+// IsAuthenticated checks if the requestor is authenticated.
+func (token *AccessTokenEntry) IsAuthenticated() bool {
+	role := token.GetRole()
+	return role != RoleGuest && role != RoleInvalid
+}
+
 // Get gets multiple access tokens.
 func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	var whereArgs []interface{}
@@ -271,7 +277,7 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	role := request.AccessToken.GetRole()
 	if role != RoleAdmin {
 		if request.AccessToken.OwnerUser != nil {
-			whereArgs = append(whereArgs, "user", "=", request.AccessToken.OwnerUser.ID)
+			whereArgs = append(whereArgs, "user", "=", request.AccessToken.OwnerUserID)
 		} else {
 			// No access, just leave
 			return Result{}
@@ -298,15 +304,9 @@ func (token *AccessTokenEntry) Get(request *Request) Result {
 		return Result{Code: 400, Message: "missing ID"}
 	}
 
-	// Check if self or operator/admin
-	role := request.AccessToken.GetRole()
-	if role != RoleAdmin {
-		if request.AccessToken.OwnerUser != nil && request.AccessToken.OwnerUser.ID.String() != id {
-			return Result{Code: 403, Message: "Access denied"}
-		}
-		if request.AccessToken.OwnerUser == nil {
-			return Result{Code: 403, Message: "Access denied"}
-		}
+	// Check if self or admin
+	if request.AccessToken.GetRole() != RoleAdmin && request.AccessToken.OwnerUserID.String() != id {
+		return UnauthorizedResult(request)
 	}
 
 	dbResult := db.Select(token, "access_tokens", "id", "=", id)

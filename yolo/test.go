@@ -92,7 +92,7 @@ func (tests *Tests) Get(request *rest.Request) rest.Result {
 func (tests *Tests) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Feed individual tests to the individual post endpoint, stop on first error
@@ -111,7 +111,7 @@ func (tests *Tests) Post(request *rest.Request) rest.Result {
 func (tests *Tests) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params, prep filtering
@@ -175,7 +175,7 @@ func (test *Test) Get(request *rest.Request) rest.Result {
 func (test *Test) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Overwrite certain fields
@@ -237,7 +237,7 @@ func (test *Test) Post(request *rest.Request) rest.Result {
 func (test *Test) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleTester && request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params

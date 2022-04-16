@@ -60,7 +60,7 @@ func (users *Users) Get(request *Request) Result {
 	role := request.AccessToken.GetRole()
 	if role != RoleOperator && role != RoleAdmin {
 		if request.AccessToken.OwnerUser != nil {
-			whereArgs = append(whereArgs, "id", "=", request.AccessToken.OwnerUser.ID)
+			whereArgs = append(whereArgs, "id", "=", request.AccessToken.OwnerUserID)
 		} else {
 			// No access, just leave
 			return Result{}
@@ -87,13 +87,8 @@ func (user *User) Get(request *Request) Result {
 
 	// Check if self or operator/admin
 	role := request.AccessToken.GetRole()
-	if role != RoleOperator && role != RoleAdmin {
-		if request.AccessToken.OwnerUser != nil && *request.AccessToken.OwnerUser.ID != id {
-			return Result{Code: 403, Message: "Access denied"}
-		}
-		if request.AccessToken.OwnerUser == nil {
-			return Result{Code: 403, Message: "Access denied"}
-		}
+	if role != RoleOperator && role != RoleAdmin && *request.AccessToken.OwnerUserID != id {
+		return UnauthorizedResult(*request.AccessToken)
 	}
 
 	dbResult := db.Select(user, "users", "id", "=", id)

@@ -90,7 +90,7 @@ func (track *Track) Get(request *rest.Request) rest.Result {
 func (track *Track) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Validate
@@ -119,7 +119,7 @@ func (track *Track) Post(request *rest.Request) rest.Result {
 func (track *Track) Put(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -144,7 +144,7 @@ func (track *Track) Put(request *rest.Request) rest.Result {
 func (track *Track) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.Result{Code: 403, Message: "Permission denied"}
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params

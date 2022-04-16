@@ -153,6 +153,22 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 ## Examples
 
+### cURL Examples
+
+Feed small data into some endpoint (from STDIN) (breaks for huge inputs):
+
+```
+cat | curl -H "Authorization: Bearer $TECHO_PASS" https://techo.gathering.org/api/documents/ -X PUT --data-binary @-
+<data>
+<Ctrl+D>
+```
+
+Feed big data into some endpoint (from file):
+
+```
+curl -H "Authorization: Bearer $TECHO_PASS" https://techo.gathering.org/api/documents/ -X PUT --data-binary @some-file
+```
+
 ### User Registration (User)
 
 Should be called every time the user logs in. It's idempotent. Note that it's possible to just make a fake user by generating a UUID, the frontend auth part is mostly just for convenience.
@@ -298,3 +314,22 @@ HTTP/1.1 200 OK
 ### Manual-ish DB Queries
 
 See `dev/print-*.sh` or pipe your own into `dev/db-cmd.sh`.
+
+## Miscellanea
+
+### Generate a Token Key
+
+Paste this into the Go playground or whatever:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	buffer := make([]byte, 32)
+	rand.Read(buffer)
+	encoded := base64.StdEncoding.EncodeToString(buffer)
+	fmt.Println(encoded)
+}
+```
