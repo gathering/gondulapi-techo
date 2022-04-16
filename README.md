@@ -43,6 +43,7 @@ You don't have to use Docker or Docker Compose, but it makes it easier.
 - Normalize UUIDs from path/query params before comparing in database to avoid missing a match due to case sensitivity for something insensitive.
 - Create permanent access tokens through API.
 - Remove temporary, custom endpoints (`/custom/track-stations/` and `/custom/station-tasks-tests/`).
+- Make usae of `_id` in DB and JSON fields more consistend. And `-id` in query params.
 
 ### Desirable Changes from 2021
 
