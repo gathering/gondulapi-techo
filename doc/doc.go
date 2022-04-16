@@ -93,7 +93,7 @@ func (family *DocumentFamily) Get(request *rest.Request) rest.Result {
 func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -122,7 +122,7 @@ func (family *DocumentFamily) Post(request *rest.Request) rest.Result {
 func (family *DocumentFamily) Put(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -144,7 +144,7 @@ func (family *DocumentFamily) Put(request *rest.Request) rest.Result {
 func (family *DocumentFamily) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -241,7 +241,7 @@ func (documents *Documents) Get(request *rest.Request) rest.Result {
 func (documents *Documents) Put(request *rest.Request) rest.Result {
 	// Check params
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Feed individual tests to the individual post endpoint, stop on first error
@@ -284,7 +284,7 @@ func (document *Document) Get(request *rest.Request) rest.Result {
 func (document *Document) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Overwrite stuff
@@ -310,7 +310,7 @@ func (document *Document) Post(request *rest.Request) rest.Result {
 func (document *Document) Put(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params
@@ -343,7 +343,7 @@ func (document *Document) Put(request *rest.Request) rest.Result {
 func (document *Document) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(request)
+		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
 	// Check params

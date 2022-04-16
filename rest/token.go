@@ -306,7 +306,7 @@ func (token *AccessTokenEntry) Get(request *Request) Result {
 
 	// Check if self or admin
 	if request.AccessToken.GetRole() != RoleAdmin && request.AccessToken.OwnerUserID.String() != id {
-		return UnauthorizedResult(request)
+		return UnauthorizedResult(*request.AccessToken)
 	}
 
 	dbResult := db.Select(token, "access_tokens", "id", "=", id)
