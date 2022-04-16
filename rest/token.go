@@ -59,8 +59,9 @@ const (
 
 // AccessTokenEntry is a collections of access things used for the client to authenticate itself and for the backend to know more about the client.
 type AccessTokenEntry struct {
-	ID             uuid.UUID  `column:"id" json:"id"`
-	Key            string     `column:"key" json:"key,omitempty"`
+	ID  uuid.UUID `column:"id" json:"id"`
+	Key string    `column:"key" json:"key,omitempty"`
+	// TODO rename to just "user" since the DB is fixed now
 	OwnerUserID    *uuid.UUID `column:"owner_user" json:"owner_user,omitempty"`       // Optional, not used for e.g. test status scripts.
 	NonUserRole    *Role      `column:"non_user_role" json:"non_user_role,omitempty"` // Role if not a user token. Call .GetRole() to get the effective role.
 	CreationTime   time.Time  `column:"creation_time" json:"creation_time"`
@@ -277,7 +278,7 @@ func (tokens *AccessTokenEntries) Get(request *Request) Result {
 	role := request.AccessToken.GetRole()
 	if role != RoleAdmin {
 		if request.AccessToken.OwnerUser != nil {
-			whereArgs = append(whereArgs, "user", "=", request.AccessToken.OwnerUserID)
+			whereArgs = append(whereArgs, "user", "=", *request.AccessToken.OwnerUserID)
 		} else {
 			// No access, just leave
 			return Result{}

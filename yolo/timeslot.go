@@ -138,7 +138,7 @@ func (timeslot *Timeslot) Get(request *rest.Request) rest.Result {
 
 	// Only show if operator/admin or if self-assigned
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
-		if request.AccessToken.OwnerUserID != timeslot.UserID {
+		if *request.AccessToken.OwnerUserID != *timeslot.UserID {
 			return rest.UnauthorizedResult(*request.AccessToken)
 		}
 	}
@@ -161,7 +161,7 @@ func (timeslot *Timeslot) Post(request *rest.Request) rest.Result {
 
 	// Only allow if operator/admin or if self-assigned
 	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin {
-		if request.AccessToken.OwnerUserID == timeslot.UserID {
+		if *request.AccessToken.OwnerUserID == *timeslot.UserID {
 			// Limit access to certain fields if self-assigned and not operator/admin
 			timeslot.BeginTime = nil
 			timeslot.EndTime = nil
@@ -380,7 +380,7 @@ func (beginRequest *TimeslotBeginRequest) Post(request *rest.Request) rest.Resul
 	}
 
 	// Check perms
-	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && *request.AccessToken.OwnerUserID != *timeslot.UserID {
 		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
@@ -503,7 +503,7 @@ func (endRequest *TimeslotEndRequest) Post(request *rest.Request) rest.Result {
 	}
 
 	// Check perms
-	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.OwnerUserID != timeslot.UserID {
+	if request.AccessToken.GetRole() != rest.RoleOperator && request.AccessToken.GetRole() != rest.RoleAdmin && *request.AccessToken.OwnerUserID != *timeslot.UserID {
 		return rest.UnauthorizedResult(*request.AccessToken)
 	}
 
