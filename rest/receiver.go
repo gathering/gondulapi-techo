@@ -51,6 +51,7 @@ import (
 	"strings"
 
 	"github.com/gathering/tech-online-backend/config"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -68,6 +69,7 @@ type receiverSet struct {
 var receiverSets map[string]*receiverSet
 
 type input struct {
+	requestID  uuid.UUID
 	url        *url.URL
 	pathPrefix string
 	pathSuffix string
@@ -150,15 +152,17 @@ func StartReceiver() {
 	log.Fatal(server.ListenAndServe())
 }
 
-func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (set receiverSet) ServeHTTP(httpWriter http.ResponseWriter, httpRequest *http.Request) {
+	requestID := uuid.New()
 	log.WithFields(log.Fields{
-		"url":    request.URL,
-		"method": request.Method,
-		"client": request.RemoteAddr,
+		"id":     requestID,
+		"url":    httpRequest.URL,
+		"method": httpRequest.Method,
+		"client": httpRequest.RemoteAddr,
 	}).Infof("Request")
 
 	// Process request content
-	input, err := getInput(request, set.pathPrefix)
+	input, err := processInput(httpRequest, set.pathPrefix, requestID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"data": string(input.data),
@@ -167,29 +171,15 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 
-	// Purge expired access tokens (should happen as periodic task, but whatever, requests are pretty periodic and this is pretty quick)
+	// Purge expired access tokens
+	// Should happen as periodic task, but whatever, requests are pretty periodic and this is pretty quick
+	// TODO optimize
 	purgeExpiredAccessTokens()
 
 	// Load access token entry (if any valid) and user (if any associated)
-	var token *AccessTokenEntry
-	authHeader, authHeaderFound := request.Header["Authorization"]
-	if authHeaderFound {
-		authHeaderFields := strings.Fields(authHeader[0])
-		if len(authHeaderFields) == 2 && strings.ToLower(authHeaderFields[0]) == "bearer" {
-			tokenKey := authHeaderFields[1]
-			token = loadAccessTokenByKey(tokenKey)
-		}
-	}
-	// Ignore illegal or malformed token, just give them a guest token instead of complaining
-	if token == nil {
-		token = makeGuestAccessToken()
-	}
-	log.WithFields(log.Fields{
-		"token":   token.ID,
-		"role":    token.GetRole(),
-		"comment": token.Comment,
-	}).Trace("Using access token")
+	token := getRequestAccessToken(httpRequest)
 
+	// Find matching receiver
 	var foundReceiver *receiver
 	for _, receiver := range set.receivers {
 		if receiver.pathPattern.MatchString(input.pathSuffix) {
@@ -202,37 +192,65 @@ func (set receiverSet) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		}
 	}
 
-	// Process request
-	output := handleRequest(foundReceiver, input, token)
+	// Handle request at appropriate endpoints
+	result, data := handleRequest(foundReceiver, input, token)
+
+	// Process output
+	output := processOutput(input, result, data)
 
 	// Create response
-	answerRequest(writer, input, output)
+	sendResponse(httpWriter, input, output)
+}
+
+func getRequestAccessToken(httpRequest *http.Request) AccessTokenEntry {
+	var token *AccessTokenEntry
+	authHeader, authHeaderFound := httpRequest.Header["Authorization"]
+	if authHeaderFound {
+		authHeaderFields := strings.Fields(authHeader[0])
+		if len(authHeaderFields) == 2 && strings.ToLower(authHeaderFields[0]) == "bearer" {
+			tokenKey := authHeaderFields[1]
+			token = loadAccessTokenByKey(tokenKey)
+		}
+	}
+	// Ignore illegal or malformed token, just give them a guest token instead of complaining
+	if token == nil {
+		guestToken := makeGuestAccessToken()
+		token = &guestToken
+	}
+	log.WithFields(log.Fields{
+		"token":   token.ID,
+		"role":    token.GetRole(),
+		"comment": token.Comment,
+	}).Trace("Using access token")
+
+	return *token
 }
 
 // get is a badly named function in the context of HTTP since what it
 // really does is just read the body of a HTTP request. In my defence, it
-// used to do more. But what have it done for me lately?!
-func getInput(request *http.Request, pathPrefix string) (input, error) {
+// used to do more. But what has it done for me lately?!
+func processInput(httpRequest *http.Request, pathPrefix string, requestID uuid.UUID) (input, error) {
 	var input input
-	fullPath := request.URL.Path
+	input.requestID = requestID
+	fullPath := httpRequest.URL.Path
 	// Make sure path always ends with "/"
 	if !strings.HasSuffix(fullPath, "/") {
 		fullPath += "/"
 	}
-	input.url = request.URL
+	input.url = httpRequest.URL
 	input.pathPrefix = pathPrefix
 	input.pathSuffix = fullPath[len(pathPrefix):]
-	input.query = request.URL.Query()
-	input.method = request.Method
-	input.pretty = len(request.URL.Query()["pretty"]) > 0
+	input.query = httpRequest.URL.Query()
+	input.method = httpRequest.Method
+	input.pretty = len(httpRequest.URL.Query()["pretty"]) > 0
 
 	// Process body
-	if request.ContentLength != 0 {
-		input.data = make([]byte, request.ContentLength)
+	if httpRequest.ContentLength != 0 {
+		input.data = make([]byte, httpRequest.ContentLength)
 
-		if n, err := io.ReadFull(request.Body, input.data); err != nil {
+		if n, err := io.ReadFull(httpRequest.Body, input.data); err != nil {
 			log.WithFields(log.Fields{
-				"address":  request.RemoteAddr,
+				"address":  httpRequest.RemoteAddr,
 				"error":    err,
 				"numbytes": n,
 			}).Error("Read error from client")
@@ -246,67 +264,7 @@ func getInput(request *http.Request, pathPrefix string) (input, error) {
 // handle figures out what Method the input has, casts item to the correct
 // interface and calls the relevant function, if any, for that data. For
 // PUT and POST it also parses the input data.
-func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntry) (output output) {
-	var result Result
-	var defaultCode int
-	var handlerData interface{}
-
-	// Handle handler handling
-	defer func() {
-		// Clear output
-		output.cachecontrol = ""
-		output.code = 0
-		output.location = ""
-		output.data = nil
-
-		if result.Error != nil {
-			log.WithError(result.Error).Warn("internal server error")
-			result.Code = 500
-		}
-
-		if result.Code != 0 {
-			output.code = result.Code
-		} else {
-			output.code = defaultCode
-		}
-
-		switch {
-		case output.code >= 100 && output.code <= 199:
-		case output.code >= 200 && output.code <= 299:
-			// Data
-			if output.code == 204 {
-				// No data allowed
-				output.data = nil
-			} else if handlerData == nil {
-				// Show report if no returned data
-				output.data = result
-			} else {
-				// Show data
-				output.data = handlerData
-			}
-			// Location
-			if output.code == 201 {
-				output.location = result.Location
-			}
-		case output.code >= 300 && output.code <= 399:
-			// Hide data
-			output.data = result
-			output.location = result.Location
-		case output.code >= 400 && output.code <= 499:
-			// Always hide data on error
-			output.data = result
-		default:
-			// Overwrite both code and data if something weird
-			output.code = 500
-			output.data = message("internal server error")
-		}
-
-		// OPTIONS and HEAD must never return data
-		if input.method == "OPTIONS" || input.method == "HEAD" {
-			output.data = nil
-		}
-	}()
-
+func handleRequest(receiver *receiver, input input, accessToken AccessTokenEntry) (result Result, data interface{}) {
 	// No handler
 	if receiver == nil {
 		result.Code = 404
@@ -316,6 +274,8 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 
 	// Prepare request object
 	var request Request
+	request.ID = input.requestID
+	request.Method = input.method
 	request.AccessToken = accessToken
 	request.PathArgs = make(map[string]string)
 	argCaptures := receiver.pathPattern.FindStringSubmatch(input.pathSuffix)
@@ -349,9 +309,7 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 	item := receiver.allocator()
 	switch input.method {
 	case "OPTIONS":
-		defaultCode = 200
 	case "HEAD":
-		defaultCode = 200
 		get, ok := item.(Getter)
 		if !ok {
 			result.Code = 405
@@ -359,9 +317,8 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 			return
 		}
 		result = get.Get(&request)
-		handlerData = nil
+		data = nil
 	case "GET":
-		defaultCode = 200
 		get, ok := item.(Getter)
 		if !ok {
 			result.Code = 405
@@ -369,9 +326,8 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 			return
 		}
 		result = get.Get(&request)
-		handlerData = get
+		data = get
 	case "POST":
-		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
 				log.WithError(err).Trace("Failed to unmarshal JSON for endpoint")
@@ -387,9 +343,8 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 			return
 		}
 		result = post.Post(&request)
-		handlerData = post
+		data = post
 	case "PUT":
-		defaultCode = 200
 		if len(input.data) > 0 {
 			if err := json.Unmarshal(input.data, &item); err != nil {
 				log.WithError(err).Trace("Failed to unmarshal JSON for endpoint")
@@ -406,7 +361,6 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 		}
 		result = put.Put(&request)
 	case "DELETE":
-		defaultCode = 200
 		del, ok := item.(Deleter)
 		if !ok {
 			result.Code = 405
@@ -423,9 +377,60 @@ func handleRequest(receiver *receiver, input input, accessToken *AccessTokenEntr
 	return
 }
 
+func processOutput(input input, result Result, handlerData interface{}) (output output) {
+	if result.Error != nil {
+		log.WithError(result.Error).Warn("internal server error")
+		result.Code = 500
+	}
+
+	if result.Code != 0 {
+		output.code = result.Code
+	} else {
+		output.code = 200
+	}
+
+	switch {
+	case output.code >= 100 && output.code <= 199:
+	case output.code >= 200 && output.code <= 299:
+		// Data
+		if output.code == 204 {
+			// No data allowed
+			output.data = nil
+		} else if handlerData == nil {
+			// Show report if no returned data
+			output.data = result
+		} else {
+			// Show data
+			output.data = handlerData
+		}
+		// Location
+		if output.code == 201 {
+			output.location = result.Location
+		}
+	case output.code >= 300 && output.code <= 399:
+		// Hide data
+		output.data = result
+		output.location = result.Location
+	case output.code >= 400 && output.code <= 499:
+		// Always hide data on error
+		output.data = result
+	default:
+		// Overwrite both code and data if something weird
+		output.code = 500
+		output.data = message("internal server error")
+	}
+
+	// OPTIONS and HEAD must never return data
+	if input.method == "OPTIONS" || input.method == "HEAD" {
+		output.data = nil
+	}
+
+	return
+}
+
 // answer replies to a HTTP request with the provided output, optionally
 // formatting the output prettily. It also calculates an ETag.
-func answerRequest(w http.ResponseWriter, input input, output output) {
+func sendResponse(w http.ResponseWriter, input input, output output) {
 	log.WithFields(log.Fields{
 		"code":     output.code,
 		"location": output.location,

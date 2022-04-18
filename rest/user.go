@@ -88,7 +88,7 @@ func (user *User) Get(request *Request) Result {
 	// Check if self or operator/admin
 	role := request.AccessToken.GetRole()
 	if role != RoleOperator && role != RoleAdmin && *request.AccessToken.OwnerUserID != id {
-		return UnauthorizedResult(*request.AccessToken)
+		return UnauthorizedResult(request.AccessToken)
 	}
 
 	dbResult := db.Select(user, "users", "id", "=", id)

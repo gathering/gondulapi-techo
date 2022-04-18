@@ -10,20 +10,20 @@
 
 ## Authentication & Authorization
 
-- The authn/authz is handled by Varnish, in front if the backend.
 - Frontend users are authenticated using OAuth2 against IdP Unicorn.
 - For logged in users, the frontend should always specify the `Authorization: Bearer <token>` header.
 
 ## Endpoints
 
-Note: All endpoints may be prefixed by e.g. `/api` by configuring it in the config file.
+Note: All endpoints may be prefixed by `/api` (or whatever is configured).
 
 ### OAuth2
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/oauth2/login/[?code=<>]` | `POST` | Login using provided OAuth2 code. Returns the user and a login token. | Public. |
 | `/oauth2/info/` | `GET` | Get OAuth2 info, like `client_id` and `auth_url`. | Public. |
+| `/oauth2/login/[?code=<>]` | `POST` | Login using provided OAuth2 code. Returns the user and a login token. | Public. |
+| `/oauth2/logout` | `POST` | Delete the active access token. | Public. |
 
 Note: Add the `Authorization: Bearer <token>` header to all requests for authenticated users. `token` is the `key` returned within the `token` object in `/oauth2/login/`.
 
@@ -60,24 +60,8 @@ Example login response:
 
 | Endpoint | Methods | Description | Auth |
 | - | - | - | - |
-| `/users/[?username=<>]` | `GET` | Get users. | Self or admin. |
-| `/user/<id>` | `GET` | Create or update a user. | Self or admin. |
-
-### Custom
-
-| Endpoint | Methods | Description | Auth |
-| - | - | - | - |
-| `/custom/track-stations/<track-id>/` | `GET` | Get track info and all active stations for the specified track ID. | Public. |
-| `/custom/station-tasks-tests/<track-id>/<station-shortname>/` | `GET` | Get track info and tasks and tests for the specified track ID and station shortname. | Public. |
-
-## Old Endpoints
-
-### Users
-
-| Endpoint | Methods | Description | Auth |
-| - | - | - | - |
-| `/user/<id>` | `PUT` | Create or update a user. | Public (write). |
-| `/admin/users/[?username=<>][&id=<>]` | `GET` | Get users. | Admin. |
+| `/users/[?username=<>]` | `GET` | Get users. | Self or operator/admin. |
+| `/user/[id]` | `GET` | Create or update a user. | Self or operator/admin. |
 
 ### Documents
 
@@ -135,6 +119,8 @@ Timeslots are the participation objects for a user and a track. The start time, 
 
 ## Useful Requests
 
+**TODO: OUTDATED**
+
 **Show dirty net track stations**:
 
 `curl "https://techo.gathering.org/api/stations/?track=net&status=dirty&pretty"`
@@ -152,6 +138,8 @@ Timeslots are the participation objects for a user and a track. The start time, 
 `curl "https://techo.gathering.org/api/admin/timeslots/?not-ended&not-assigned-station&pretty"`
 
 ## Examples
+
+**TODO: OUTDATED??**
 
 ### cURL Examples
 

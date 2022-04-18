@@ -215,7 +215,7 @@ func (station *Station) Get(request *rest.Request) rest.Result {
 func (station *Station) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Make ID
@@ -243,7 +243,7 @@ func (station *Station) Post(request *rest.Request) rest.Result {
 func (station *Station) Put(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin && request.AccessToken.GetRole() != rest.RoleRunner {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Check params
@@ -272,7 +272,7 @@ func (station *Station) Put(request *rest.Request) rest.Result {
 func (station *Station) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Check params

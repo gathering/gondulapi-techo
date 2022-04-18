@@ -189,11 +189,11 @@ func loadAccessTokenByKey(key string) *AccessTokenEntry {
 }
 
 // makeGuestAccessToken creates an empty-ish guest access token, such that all requests (authenticated or not) have a role.
-func makeGuestAccessToken() *AccessTokenEntry {
+func makeGuestAccessToken() AccessTokenEntry {
 	id, _ := uuid.FromBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 	role := RoleGuest
 	time := time.Now()
-	return &AccessTokenEntry{
+	return AccessTokenEntry{
 		ID:             id,
 		Key:            "",
 		OwnerUserID:    nil,
@@ -307,7 +307,7 @@ func (token *AccessTokenEntry) Get(request *Request) Result {
 
 	// Check if self or admin
 	if request.AccessToken.GetRole() != RoleAdmin && request.AccessToken.OwnerUserID.String() != id {
-		return UnauthorizedResult(*request.AccessToken)
+		return UnauthorizedResult(request.AccessToken)
 	}
 
 	dbResult := db.Select(token, "access_tokens", "id", "=", id)

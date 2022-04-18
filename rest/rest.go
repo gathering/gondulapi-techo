@@ -20,10 +20,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 package rest
 
+import "github.com/google/uuid"
+
 // Request contains the last part of the URL (without the handler prefix), certain query args,
 // and a limit on how many elements to get.
 type Request struct {
-	AccessToken *AccessTokenEntry
+	ID          uuid.UUID
+	Method      string
+	AccessToken AccessTokenEntry
 	PathArgs    map[string]string
 	QueryArgs   map[string]string
 	ListLimit   int  // How many elements to return in listings (convenience)

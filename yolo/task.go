@@ -91,7 +91,7 @@ func (task *Task) Get(request *rest.Request) rest.Result {
 func (task *Task) Post(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Prepare and validate
@@ -117,7 +117,7 @@ func (task *Task) Post(request *rest.Request) rest.Result {
 func (task *Task) Put(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Check params
@@ -142,7 +142,7 @@ func (task *Task) Put(request *rest.Request) rest.Result {
 func (task *Task) Delete(request *rest.Request) rest.Result {
 	// Check perms
 	if request.AccessToken.GetRole() != rest.RoleAdmin {
-		return rest.UnauthorizedResult(*request.AccessToken)
+		return rest.UnauthorizedResult(request.AccessToken)
 	}
 
 	// Check params
